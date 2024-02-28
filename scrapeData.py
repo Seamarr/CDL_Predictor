@@ -108,7 +108,7 @@ for player, player_link in player_links_dict.items():
 
     for match_link in match_links:
         driver.get(match_link)
-        time.sleep(1)
+        time.sleep(1.5)
         match_id = match_link.split("/")[4]
         maps_section = WebDriverWait(driver, 20).until(
             EC.presence_of_element_located(
@@ -141,7 +141,7 @@ for player, player_link in player_links_dict.items():
                         if innerTxt in TEAMS:
                             currentTeam = innerTxt
                             continue
-                        print(currentTeam)
+                        # print(currentTeam)
                     except:
                         continue
 
