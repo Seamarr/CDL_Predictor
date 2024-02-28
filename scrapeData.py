@@ -130,7 +130,7 @@ for player, player_link in player_links_dict.items():
         for i, map in enumerate(maps):
             map_id = map.get_attribute("id")
             # print(map_id)
-            if "panel-overview" not in map_id:
+            if "panel-overview" not in map_id and "panel-game-0" not in map_id:
                 continue
             table = map.find_element(By.XPATH, "./table/tbody")
             rows = table.find_elements(By.XPATH, "./tr")
@@ -142,9 +142,9 @@ for player, player_link in player_links_dict.items():
                     # print("check 2")
                     tds = row.find_elements(By.XPATH, "./td")
                     nameCol = tds[0].find_element(By.XPATH, "./a/div")
-                    innerTxt = nameCol.text
+                    innerTxt = nameCol.get_attribute("innerText")
                     # print("check 3")
-                    print(innerTxt)
+                    # print(innerTxt)
                     if innerTxt in TEAMS:
                         teams.append(innerTxt)
                         continue
@@ -155,23 +155,41 @@ for player, player_link in player_links_dict.items():
                 if innerTxt == player:
                     if "panel-overview" in map_id:  # overall
                         mode = "overall"
-                        kills = row.find_element(By.XPATH, "./td[2]").text
-                        deaths = row.find_element(By.XPATH, "./td[3]").text
-                        kd = row.find_element(By.XPATH, "./td[4]").text
-                        dmg = row.find_element(By.XPATH, "./td[6]").text
+                        kills = row.find_element(By.XPATH, "./td[2]").get_attribute(
+                            "innerText"
+                        )
+                        deaths = row.find_element(By.XPATH, "./td[3]").get_attribute(
+                            "innerText"
+                        )
+                        kd = row.find_element(By.XPATH, "./td[4]").get_attribute(
+                            "innerText"
+                        )
+                        dmg = row.find_element(By.XPATH, "./td[6]").get_attribute(
+                            "innerText"
+                        )
                         hillTime = None
                         firstBloods = None
                         ticks = None
 
-                    # if "panel-game-0" in map_id:  # hardpoint
-                    #     mode = "HardPoint"
-                    #     kills = row.find_element(By.XPATH, "./td[2]").text
-                    #     deaths = row.find_element(By.XPATH, "./td[3]").text
-                    #     kd = row.find_element(By.XPATH, "./td[4]").text
-                    #     dmg = row.find_element(By.XPATH, "./td[6]").text
-                    #     hillTime = row.find_element(By.XPATH, "./td[7]").text  # seconds
-                    #     firstBloods = None
-                    #     ticks = None
+                    if "panel-game-0" in map_id:  # hardpoint
+                        mode = "HardPoint"
+                        kills = row.find_element(By.XPATH, "./td[2]").get_attribute(
+                            "innerText"
+                        )
+                        deaths = row.find_element(By.XPATH, "./td[3]").get_attribute(
+                            "innerText"
+                        )
+                        kd = row.find_element(By.XPATH, "./td[4]").get_attribute(
+                            "innerText"
+                        )
+                        dmg = row.find_element(By.XPATH, "./td[6]").get_attribute(
+                            "innerText"
+                        )
+                        hillTime = row.find_element(By.XPATH, "./td[7]").get_attribute(
+                            "innerText"
+                        )  # seconds
+                        firstBloods = None
+                        ticks = None
 
                     curPlayerStats = {
                         "Match_ID": match_id,
@@ -187,7 +205,7 @@ for player, player_link in player_links_dict.items():
                         "Ticks": ticks,
                     }
                 playersInMatch.append(innerTxt)
-            print(playersInMatch)
+            # print(playersInMatch)
             isInFirstTeam = False
             for i in range(len(playersInMatch)):
                 if playersInMatch[i] == player and i <= 3:
