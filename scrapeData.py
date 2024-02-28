@@ -72,15 +72,15 @@ for player, player_link in player_links_dict.items():
     )
     cookies_button.click()
 
-    mathes_button_xpath = "mantine-r3-tab-matches"
+    mathes_button_id = "mantine-r2-tab-matches"
     matches_button = WebDriverWait(driver, 20).until(
-        EC.element_to_be_clickable((By.ID, mathes_button_xpath))
+        EC.element_to_be_clickable((By.ID, mathes_button_id))
     )
     driver.execute_script("arguments[0].scrollIntoView(true);", matches_button)
     matches_button.click()
 
     completed_mathes_button_xpath = (
-        '//*[@id="mantine-r3-panel-matches"]/div[1]/button[2]'
+        '//*[@id="mantine-r2-panel-matches"]/div[1]/button[2]'
     )
     completed_mathes_button = WebDriverWait(driver, 20).until(
         EC.element_to_be_clickable((By.XPATH, completed_mathes_button_xpath))
@@ -91,7 +91,7 @@ for player, player_link in player_links_dict.items():
 
     matches_sections_container = WebDriverWait(driver, 20).until(
         EC.presence_of_element_located(
-            (By.XPATH, '//*[@id="mantine-r3-panel-matches"]/div[2]')
+            (By.XPATH, '//*[@id="mantine-r2-panel-matches"]/div[2]')
         )
     )
 
@@ -129,40 +129,95 @@ for player, player_link in player_links_dict.items():
 
         for i, map in enumerate(maps):
             map_id = map.get_attribute("id")
-            if map.get_attribute("id") == "mantine-r3-panel-overview":  # overall
-                table = map.find_element(By.XPATH, "./table/tbody")
-                rows = table.find_elements(By.XPATH, "./tr")
-                currentTeam = ""
-                for i, row in enumerate(rows):
-                    try:
-                        tds = row.find_elements(By.XPATH, "./td")
-                        nameCol = tds[0].find_element(By.XPATH, "./a/div")
-                        innerTxt = nameCol.text
-                        if innerTxt in TEAMS:
-                            currentTeam = innerTxt
-                            continue
-                        # print(currentTeam)
-                    except:
+            # print(map_id)
+            if "panel-overview" not in map_id:
+                continue
+            table = map.find_element(By.XPATH, "./table/tbody")
+            rows = table.find_elements(By.XPATH, "./tr")
+            teams = []
+            playersInMatch = []
+            # print("check 1")
+            for i, row in enumerate(rows):
+                try:
+                    # print("check 2")
+                    tds = row.find_elements(By.XPATH, "./td")
+                    nameCol = tds[0].find_element(By.XPATH, "./a/div")
+                    innerTxt = nameCol.text
+                    # print("check 3")
+                    print(innerTxt)
+                    if innerTxt in TEAMS:
+                        teams.append(innerTxt)
                         continue
+                    # print(currentTeam)
+                except:
+                    continue
 
-                    if innerTxt == player:
+                if innerTxt == player:
+                    if "panel-overview" in map_id:  # overall
+                        mode = "overall"
                         kills = row.find_element(By.XPATH, "./td[2]").text
                         deaths = row.find_element(By.XPATH, "./td[3]").text
                         kd = row.find_element(By.XPATH, "./td[4]").text
                         dmg = row.find_element(By.XPATH, "./td[6]").text
-                        allPlayerStats.append(
-                            {
-                                "Match_ID": match_id,
-                                "Player": player,
-                                "Mode": "overall",
-                                "Date": date,
-                                "Kills": kills,
-                                "Deaths": deaths,
-                                "KD": kd,
-                                "Damage": dmg,
-                                "Team": currentTeam,
-                            }
-                        )
+                        hillTime = None
+                        firstBloods = None
+                        ticks = None
+
+                    # if "panel-game-0" in map_id:  # hardpoint
+                    #     mode = "HardPoint"
+                    #     kills = row.find_element(By.XPATH, "./td[2]").text
+                    #     deaths = row.find_element(By.XPATH, "./td[3]").text
+                    #     kd = row.find_element(By.XPATH, "./td[4]").text
+                    #     dmg = row.find_element(By.XPATH, "./td[6]").text
+                    #     hillTime = row.find_element(By.XPATH, "./td[7]").text  # seconds
+                    #     firstBloods = None
+                    #     ticks = None
+
+                    curPlayerStats = {
+                        "Match_ID": match_id,
+                        "Player": player,
+                        "Mode": mode,
+                        "Date": date,
+                        "Kills": kills,
+                        "Deaths": deaths,
+                        "KD": kd,
+                        "Damage": dmg,
+                        "HillTime": hillTime,
+                        "FirstBloods": firstBloods,
+                        "Ticks": ticks,
+                    }
+                playersInMatch.append(innerTxt)
+            print(playersInMatch)
+            isInFirstTeam = False
+            for i in range(len(playersInMatch)):
+                if playersInMatch[i] == player and i <= 3:
+                    isInFirstTeam = True
+
+            playersInMatch.remove(player)
+
+            if isInFirstTeam:
+                curPlayerStats["PlayerTeam"] = teams[0]
+                curPlayerStats["TeamMate1"] = playersInMatch[0]
+                curPlayerStats["TeamMate2"] = playersInMatch[1]
+                curPlayerStats["TeamMate3"] = playersInMatch[2]
+                curPlayerStats["EnemyTeam"] = teams[1]
+                curPlayerStats["Enemy1"] = playersInMatch[3]
+                curPlayerStats["Enemy2"] = playersInMatch[4]
+                curPlayerStats["Enemy3"] = playersInMatch[5]
+                curPlayerStats["Enemy4"] = playersInMatch[6]
+            else:
+                curPlayerStats["PlayerTeam"] = teams[1]
+                curPlayerStats["TeamMate1"] = playersInMatch[4]
+                curPlayerStats["TeamMate2"] = playersInMatch[5]
+                curPlayerStats["TeamMate3"] = playersInMatch[6]
+                curPlayerStats["EnemyTeam"] = teams[0]
+                curPlayerStats["Enemy1"] = playersInMatch[0]
+                curPlayerStats["Enemy2"] = playersInMatch[1]
+                curPlayerStats["Enemy3"] = playersInMatch[2]
+                curPlayerStats["Enemy4"] = playersInMatch[3]
+
+            allPlayerStats.append(curPlayerStats)
+
 
 print(allPlayerStats)
 
