@@ -6,6 +6,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 import time
+from datetime import datetime
 
 TEAMS = {
     "Atlanta FaZe",
@@ -22,6 +23,13 @@ TEAMS = {
     "Toronto Ultra",
 }
 
+
+# Function to scroll to the element with an offset
+def scroll_to_element_with_offset(driver, element, offset):
+    y = element.location["y"] - offset
+    driver.execute_script(f"window.scrollTo(0, {y});")
+
+
 # Setup WebDriver
 driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
 
@@ -31,7 +39,7 @@ driver.get("https://www.breakingpoint.gg/cdl/teams-and-players")
 # Example: Click a button by its ID
 
 button_xpath = "/html/body/div[1]/div/div[1]/main/div/div[1]/div/div/div[2]/div[3]/div[1]/button[2]/div"
-button = WebDriverWait(driver, 20).until(
+button = WebDriverWait(driver, 3).until(
     EC.element_to_be_clickable((By.XPATH, button_xpath))
 )
 button.click()
@@ -42,7 +50,7 @@ button.click()
 
 # Find all player elements (adjust the selector as needed)
 players_container_xpath = "/html/body/div[1]/div/div[1]/main/div/div[1]/div/div/div[2]/div[3]/div[3]/div/div[2]"
-players_container = WebDriverWait(driver, 20).until(
+players_container = WebDriverWait(driver, 3).until(
     EC.visibility_of_element_located((By.XPATH, players_container_xpath))
 )
 
@@ -58,7 +66,7 @@ for link in player_links:
 
 # print(player_links_dict)
 
-player_links_dict = {"2ReaL": "https://www.breakingpoint.gg/players/2ReaL"}
+player_links_dict = {"aBeZy": "https://www.breakingpoint.gg/players/aBeZy"}
 
 allPlayerStats = []
 
@@ -66,176 +74,223 @@ for player, player_link in player_links_dict.items():
 
     driver.get(player_link)
 
-    cookies_button_xpath = '//*[@id="__next"]/div/div[1]/main/div[2]/div/div[3]/button'
-    cookies_button = WebDriverWait(driver, 20).until(
+    cookies_button_xpath = "//button[contains(., 'Accept')]"
+    cookies_button = WebDriverWait(driver, 3).until(
         EC.element_to_be_clickable((By.XPATH, cookies_button_xpath))
     )
     cookies_button.click()
 
-    mathes_button_id = "mantine-r2-tab-matches"
-    matches_button = WebDriverWait(driver, 20).until(
-        EC.element_to_be_clickable((By.ID, mathes_button_id))
+    mathes_button_xpath = "(//button[contains(., 'Matches')])[3]"
+    matches_button = WebDriverWait(driver, 3).until(
+        EC.element_to_be_clickable((By.XPATH, mathes_button_xpath))
     )
     driver.execute_script("arguments[0].scrollIntoView(true);", matches_button)
     matches_button.click()
 
-    completed_mathes_button_xpath = (
-        '//*[@id="mantine-r2-panel-matches"]/div[1]/button[2]'
-    )
-    completed_mathes_button = WebDriverWait(driver, 20).until(
+    completed_mathes_button_xpath = "//button[contains(., 'Completed Matches')]"
+    completed_mathes_button = WebDriverWait(driver, 3).until(
         EC.element_to_be_clickable((By.XPATH, completed_mathes_button_xpath))
     )
     completed_mathes_button.click()
 
-    time.sleep(10)
+    time.sleep(1.5)
 
-    matches_sections_container = WebDriverWait(driver, 20).until(
+    matches_sections_container = WebDriverWait(driver, 3).until(
         EC.presence_of_element_located(
-            (By.XPATH, '//*[@id="mantine-r2-panel-matches"]/div[2]')
+            (By.CSS_SELECTOR, "div.mantine-Stack-root.mantine-4bos9j")
         )
     )
 
-    matches_sections = matches_sections_container.find_elements(By.XPATH, "./div")
+    matches_sections = matches_sections_container.find_elements(
+        By.XPATH, "./div[contains(., '2024')]"
+    )
+
+    # print(len(matches_sections))
 
     match_links = []
 
     for match_section in matches_sections:
-        innerDivs = match_section.find_elements(By.XPATH, "./div")
-        matches = innerDivs[0].find_elements(By.XPATH, "./div")[1:]
+        innerDiv = match_section.find_element(By.XPATH, "./div")
+        matchesDiv = innerDiv.find_elements(By.XPATH, "./div")[1]
+        matches = matchesDiv.find_elements(By.XPATH, "./div")[1:]
         for match in matches:
             match_link = match.find_element(By.XPATH, "./a").get_attribute("href")
             match_links.append(match_link)
 
-    for match_link in match_links:
-        driver.get(match_link)
-        time.sleep(1.5)
-        match_id = match_link.split("/")[4]
-        maps_section = WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located(
-                (
-                    By.XPATH,
-                    '//*[@id="__next"]/div/div[1]/main/div/div[1]/div/div/div[2]/div[3]/div[2]',
+    # print(match_links)
+    for matchChecked, match_link in enumerate(match_links):
+        if matchChecked == 3:
+            break
+        try:
+            driver.get(match_link)
+            time.sleep(1.5)
+            match_id = match_link.split("/")[4]
+            print("Match id: ", match_id)
+
+            date = WebDriverWait(driver, 3).until(
+                EC.visibility_of_element_located(
+                    (
+                        By.XPATH,
+                        "//div[contains(text(), '2024') and (contains(text(), 'pm') or contains(text(), 'am'))]",
+                    )
                 )
             )
-        )
 
-        date = driver.find_element(
-            By.XPATH,
-            '//*[@id="__next"]/div/div[1]/main/div/div[1]/div/div/div[2]/div[1]/div/div[1]/div[2]/div/div',
-        )
-        date = date.text.split(",")[0]
+            date = date.text
 
-        maps = maps_section.find_elements(By.XPATH, "./div")
+            # print("Date RAW: ", date)
 
-        for i, map in enumerate(maps):
-            map_id = map.get_attribute("id")
-            # print(map_id)
-            if "panel-overview" not in map_id and "panel-game-0" not in map_id:
-                continue
-            table = map.find_element(By.XPATH, "./table/tbody")
-            rows = table.find_elements(By.XPATH, "./tr")
-            teams = []
-            playersInMatch = []
-            # print("check 1")
-            for i, row in enumerate(rows):
-                try:
-                    # print("check 2")
+            # Convert the scraped date string to a datetime object
+            date_obj = datetime.strptime(date, "%Y %m/%d %I:%M %p")
+
+            # Format the datetime object into a standardized string
+            formatted_date = date_obj.strftime("%Y-%m-%d %H:%M:%S")
+
+            # print("Date: ", formatted_date)
+
+            buttons_with_map = WebDriverWait(driver, 3).until(
+                EC.presence_of_all_elements_located(
+                    (By.XPATH, "//button[div[contains(text(), 'Map')]]")
+                )
+            )
+
+            overview_button = WebDriverWait(driver, 3).until(
+                EC.presence_of_element_located(
+                    (
+                        By.XPATH,
+                        '//button[contains(., "Overview")]',
+                    )
+                )
+            )
+
+            buttons_with_map.insert(0, overview_button)
+            scroll_to_element_with_offset(
+                driver, overview_button, 200
+            )  # Adjust the offset as needed
+            time.sleep(0.2)
+
+            for mapNum, button in enumerate(buttons_with_map):
+                button.click()
+                time.sleep(0.2)
+                # print("Button clicked")
+                teams = []
+                playersInMatch = []
+                table_body = WebDriverWait(driver, 3).until(
+                    EC.presence_of_element_located(
+                        (
+                            By.XPATH,
+                            "//table/tbody",
+                        )
+                    )
+                )
+
+                rows = table_body.find_elements(By.XPATH, "./tr")
+
+                for i, row in enumerate(rows):
                     tds = row.find_elements(By.XPATH, "./td")
                     nameCol = tds[0].find_element(By.XPATH, "./a/div")
                     innerTxt = nameCol.get_attribute("innerText")
-                    # print("check 3")
-                    # print(innerTxt)
-                    if innerTxt in TEAMS:
+                    if i == 0 or i == 5:
                         teams.append(innerTxt)
-                        continue
-                    # print(currentTeam)
-                except:
-                    continue
+                    else:
+                        if mapNum == 0:  # overall
+                            mode = "overall"
+                            kills = row.find_element(By.XPATH, "./td[2]").get_attribute(
+                                "innerText"
+                            )
+                            deaths = row.find_element(
+                                By.XPATH, "./td[3]"
+                            ).get_attribute("innerText")
+                            kd = row.find_element(By.XPATH, "./td[4]").get_attribute(
+                                "innerText"
+                            )
+                            dmg = row.find_element(By.XPATH, "./td[6]").get_attribute(
+                                "innerText"
+                            )
+                            hillTime = None
+                            firstBloods = None
+                            ticks = None
 
-                if innerTxt == player:
-                    if "panel-overview" in map_id:  # overall
-                        mode = "overall"
-                        kills = row.find_element(By.XPATH, "./td[2]").get_attribute(
-                            "innerText"
-                        )
-                        deaths = row.find_element(By.XPATH, "./td[3]").get_attribute(
-                            "innerText"
-                        )
-                        kd = row.find_element(By.XPATH, "./td[4]").get_attribute(
-                            "innerText"
-                        )
-                        dmg = row.find_element(By.XPATH, "./td[6]").get_attribute(
-                            "innerText"
-                        )
-                        hillTime = None
-                        firstBloods = None
-                        ticks = None
+                        elif mapNum == 1 or mapNum == 4:  # hardpoint
+                            mode = "HardPoint"
+                            kills = row.find_element(By.XPATH, "./td[2]").get_attribute(
+                                "innerText"
+                            )
+                            deaths = row.find_element(
+                                By.XPATH, "./td[3]"
+                            ).get_attribute("innerText")
+                            kd = row.find_element(By.XPATH, "./td[4]").get_attribute(
+                                "innerText"
+                            )
+                            dmg = row.find_element(By.XPATH, "./td[6]").get_attribute(
+                                "innerText"
+                            )
+                            hillTime = row.find_element(
+                                By.XPATH, "./td[7]"
+                            ).get_attribute(
+                                "innerText"
+                            )  # seconds
+                            firstBloods = None
+                            ticks = None
+                        else:
+                            mode = None
+                            kills = None
+                            deaths = None
+                            kd = None
+                            dmg = None
+                            hillTime = None
+                            firstBloods = None
+                            ticks = None
 
-                    if "panel-game-0" in map_id:  # hardpoint
-                        mode = "HardPoint"
-                        kills = row.find_element(By.XPATH, "./td[2]").get_attribute(
-                            "innerText"
-                        )
-                        deaths = row.find_element(By.XPATH, "./td[3]").get_attribute(
-                            "innerText"
-                        )
-                        kd = row.find_element(By.XPATH, "./td[4]").get_attribute(
-                            "innerText"
-                        )
-                        dmg = row.find_element(By.XPATH, "./td[6]").get_attribute(
-                            "innerText"
-                        )
-                        hillTime = row.find_element(By.XPATH, "./td[7]").get_attribute(
-                            "innerText"
-                        )  # seconds
-                        firstBloods = None
-                        ticks = None
+                        curPlayerStats = {
+                            "Match_ID": match_id,
+                            "Player": player,
+                            "Mode": mode,
+                            "Date": date,
+                            "Kills": kills,
+                            "Deaths": deaths,
+                            "KD": kd,
+                            "Damage": dmg,
+                            "HillTime": hillTime,
+                            "FirstBloods": firstBloods,
+                            "Ticks": ticks,
+                        }
+                        playersInMatch.append(innerTxt)
+                # print(playersInMatch)
+                isInFirstTeam = False
+                for i in range(len(playersInMatch)):
+                    if playersInMatch[i] == player and i <= 3:
+                        isInFirstTeam = True
 
-                    curPlayerStats = {
-                        "Match_ID": match_id,
-                        "Player": player,
-                        "Mode": mode,
-                        "Date": date,
-                        "Kills": kills,
-                        "Deaths": deaths,
-                        "KD": kd,
-                        "Damage": dmg,
-                        "HillTime": hillTime,
-                        "FirstBloods": firstBloods,
-                        "Ticks": ticks,
-                    }
-                playersInMatch.append(innerTxt)
-            # print(playersInMatch)
-            isInFirstTeam = False
-            for i in range(len(playersInMatch)):
-                if playersInMatch[i] == player and i <= 3:
-                    isInFirstTeam = True
+                playersInMatch.remove(player)
 
-            playersInMatch.remove(player)
+                if isInFirstTeam:
+                    curPlayerStats["PlayerTeam"] = teams[0]
+                    curPlayerStats["TeamMate1"] = playersInMatch[0]
+                    curPlayerStats["TeamMate2"] = playersInMatch[1]
+                    curPlayerStats["TeamMate3"] = playersInMatch[2]
+                    curPlayerStats["EnemyTeam"] = teams[1]
+                    curPlayerStats["Enemy1"] = playersInMatch[3]
+                    curPlayerStats["Enemy2"] = playersInMatch[4]
+                    curPlayerStats["Enemy3"] = playersInMatch[5]
+                    curPlayerStats["Enemy4"] = playersInMatch[6]
+                else:
+                    curPlayerStats["PlayerTeam"] = teams[1]
+                    curPlayerStats["TeamMate1"] = playersInMatch[4]
+                    curPlayerStats["TeamMate2"] = playersInMatch[5]
+                    curPlayerStats["TeamMate3"] = playersInMatch[6]
+                    curPlayerStats["EnemyTeam"] = teams[0]
+                    curPlayerStats["Enemy1"] = playersInMatch[0]
+                    curPlayerStats["Enemy2"] = playersInMatch[1]
+                    curPlayerStats["Enemy3"] = playersInMatch[2]
+                    curPlayerStats["Enemy4"] = playersInMatch[3]
 
-            if isInFirstTeam:
-                curPlayerStats["PlayerTeam"] = teams[0]
-                curPlayerStats["TeamMate1"] = playersInMatch[0]
-                curPlayerStats["TeamMate2"] = playersInMatch[1]
-                curPlayerStats["TeamMate3"] = playersInMatch[2]
-                curPlayerStats["EnemyTeam"] = teams[1]
-                curPlayerStats["Enemy1"] = playersInMatch[3]
-                curPlayerStats["Enemy2"] = playersInMatch[4]
-                curPlayerStats["Enemy3"] = playersInMatch[5]
-                curPlayerStats["Enemy4"] = playersInMatch[6]
-            else:
-                curPlayerStats["PlayerTeam"] = teams[1]
-                curPlayerStats["TeamMate1"] = playersInMatch[4]
-                curPlayerStats["TeamMate2"] = playersInMatch[5]
-                curPlayerStats["TeamMate3"] = playersInMatch[6]
-                curPlayerStats["EnemyTeam"] = teams[0]
-                curPlayerStats["Enemy1"] = playersInMatch[0]
-                curPlayerStats["Enemy2"] = playersInMatch[1]
-                curPlayerStats["Enemy3"] = playersInMatch[2]
-                curPlayerStats["Enemy4"] = playersInMatch[3]
+                allPlayerStats.append(curPlayerStats)
+                # print(teams)
 
-            allPlayerStats.append(curPlayerStats)
-
+        except Exception as e:
+            print(e)
+            continue
 
 print(allPlayerStats)
 
