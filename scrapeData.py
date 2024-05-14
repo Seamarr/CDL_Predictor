@@ -299,6 +299,10 @@ def scrape():
     return allPlayerStats
 
 
-if __name__ == "__main__":
+def main():
     allPlayerStats = scrape()
     print(allPlayerStats)
+
+
+if __name__ == "__main__":
+    main()
