@@ -30,6 +30,22 @@ def scroll_to_element_with_offset(driver, element, offset):
     driver.execute_script(f"window.scrollTo(0, {y});")
 
 
+# Function to check if a button contains a div with specific text
+def button_contains_text(button, text):
+    divs = button.find_elements(By.XPATH, ".//div")
+    for div in divs:
+        if text in div.text:
+            return True
+    return False
+
+
+def calculate_kd(kills, deaths):
+    if deaths == 0:
+        deaths = 1  # Avoid division by zero
+    kd_ratio = kills / deaths
+    return round(kd_ratio, 2)
+
+
 def scrape():
 
     # Setup WebDriver
@@ -67,11 +83,13 @@ def scrape():
 
     # print(player_links_dict)
 
-    player_links_dict = {"aBeZy": "https://www.breakingpoint.gg/players/aBeZy"}
+    # player_links_dict = {"aBeZy": "https://www.breakingpoint.gg/players/aBeZy"}
 
     allPlayerStats = []
 
     for player, player_link in player_links_dict.items():
+        if player != "aBeZy":
+            continue
 
         driver.get(player_link)
 
@@ -126,6 +144,8 @@ def scrape():
                 driver.get(match_link)
                 time.sleep(1.5)
                 match_id = match_link.split("/")[4]
+                if match_id != "27304":
+                    continue
                 print("Match id: ", match_id)
 
                 date = WebDriverWait(driver, 3).until(
@@ -172,7 +192,7 @@ def scrape():
 
                 for mapNum, button in enumerate(buttons_with_map):
                     button.click()
-                    time.sleep(0.2)
+                    time.sleep(0.3)
                     # print("Button clicked")
                     teams = []
                     playersInMatch = []
@@ -187,14 +207,24 @@ def scrape():
 
                     rows = table_body.find_elements(By.XPATH, "./tr")
 
-                    for i, row in enumerate(rows):
-                        tds = row.find_elements(By.XPATH, "./td")
-                        nameCol = tds[0].find_element(By.XPATH, "./a/div")
-                        innerTxt = nameCol.get_attribute("innerText")
+                    for i, row in enumerate(rows):  # player rows
                         if i == 0 or i == 5:
+                            active_table_xpath = (
+                                "//div[contains(@id, 'panel-overview')]//table/tbody"
+                            )
+                            table_body = WebDriverWait(driver, 3).until(
+                                EC.presence_of_element_located(
+                                    (By.XPATH, active_table_xpath)
+                                )
+                            )
+                            tds = row.find_elements(By.XPATH, "./td")
+                            nameCol = tds[0].find_element(By.XPATH, "./a/div")
+                            innerTxt = nameCol.get_attribute("innerText")
                             teams.append(innerTxt)
-                        else:
-                            if mapNum == 0:  # overall
+                            continue
+                        elif innerTxt == player:
+                            if button_contains_text(button, "Overview"):  # overall
+                                print("Button contains overall!")
                                 mode = "Overall"
                                 kills = row.find_element(
                                     By.XPATH, "./td[2]"
@@ -212,7 +242,11 @@ def scrape():
                                 firstBloods = None
                                 ticks = None
 
-                            elif mapNum == 1 or mapNum == 4:  # hardpoint
+                            elif button_contains_text(
+                                button, "Map 1"
+                            ) or button_contains_text(
+                                button, "Map 4"
+                            ):  # hardpoint
                                 mode = "HardPoint"
                                 kills = row.find_element(
                                     By.XPATH, "./td[2]"
@@ -233,6 +267,44 @@ def scrape():
                                 )  # seconds
                                 firstBloods = None
                                 ticks = None
+                            elif (
+                                button_contains_text(button, "Map 2")
+                                or button_contains_text(button, "Map 5")
+                                or button_contains_text(button, "Map 7")
+                            ):  # SnD
+                                mode = "Search_and_Destroy"
+                                kills = row.find_element(
+                                    By.XPATH, "./td[2]"
+                                ).get_attribute("innerText")
+                                deaths = row.find_element(
+                                    By.XPATH, "./td[3]"
+                                ).get_attribute("innerText")
+                                kd = row.find_element(
+                                    By.XPATH, "./td[4]"
+                                ).get_attribute("innerText")
+                                dmg = row.find_element(
+                                    By.XPATH, "./td[6]"
+                                ).get_attribute("innerText")
+                                firstBloods = row.find_element(
+                                    By.XPATH, "./td[7]"
+                                ).get_attribute(
+                                    "innerText"
+                                )  # seconds
+                                hillTime = None
+                                ticks = None
+                            elif button_contains_text(
+                                button, "Map 3"
+                            ) or button_contains_text(
+                                button, "Map 6"
+                            ):  # Control
+                                mode = "Control"
+                                kills = tds[1].get_attribute("innerText")
+                                deaths = tds[2].get_attribute("innerText")
+                                kd = calculate_kd(int(kills), int(deaths))
+                                dmg = tds[5].get_attribute("innerText")
+                                ticks = tds[6].get_attribute("innerText")  # seconds
+                                hillTime = None
+                                firstBloods = None
                             else:
                                 mode = None
                                 kills = None
@@ -256,7 +328,7 @@ def scrape():
                                 "FirstBloods": firstBloods,
                                 "Ticks": ticks,
                             }
-                            playersInMatch.append(innerTxt)
+                        playersInMatch.append(innerTxt)
                     # print(playersInMatch)
                     isInFirstTeam = False
                     for i in range(len(playersInMatch)):
