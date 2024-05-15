@@ -117,48 +117,52 @@ def scrape():
             cookies_button.click()
         except:
             pass
-
-        mathes_button_xpath = (
-            "(//button[contains(., 'Matches') and contains(@id, 'tab-matches')])"
-        )
-        matches_button = WebDriverWait(driver, 3).until(
-            EC.element_to_be_clickable((By.XPATH, mathes_button_xpath))
-        )
-        driver.execute_script("arguments[0].scrollIntoView(true);", matches_button)
-        matches_button.click()
-
-        completed_mathes_button_xpath = "//button[contains(., 'Completed Matches')]"
-        completed_mathes_button = WebDriverWait(driver, 3).until(
-            EC.element_to_be_clickable((By.XPATH, completed_mathes_button_xpath))
-        )
-        completed_mathes_button.click()
-
-        time.sleep(1.5)
-
-        matches_sections_container = WebDriverWait(driver, 3).until(
-            EC.presence_of_element_located(
-                (By.CSS_SELECTOR, "div.mantine-Stack-root.mantine-4bos9j")
+        try:
+            mathes_button_xpath = (
+                "(//button[contains(., 'Matches') and contains(@id, 'tab-matches')])"
             )
-        )
+            matches_button = WebDriverWait(driver, 3).until(
+                EC.element_to_be_clickable((By.XPATH, mathes_button_xpath))
+            )
+            driver.execute_script("arguments[0].scrollIntoView(true);", matches_button)
+            matches_button.click()
 
-        matches_sections = matches_sections_container.find_elements(
-            By.XPATH, "./div[contains(., '2024')]"
-        )
+            completed_mathes_button_xpath = "//button[contains(., 'Completed Matches')]"
+            completed_mathes_button = WebDriverWait(driver, 3).until(
+                EC.element_to_be_clickable((By.XPATH, completed_mathes_button_xpath))
+            )
+            completed_mathes_button.click()
 
-        # print(len(matches_sections))
+            time.sleep(1.5)
 
-        match_links = []
+            matches_sections_container = WebDriverWait(driver, 3).until(
+                EC.presence_of_element_located(
+                    (By.CSS_SELECTOR, "div.mantine-Stack-root.mantine-4bos9j")
+                )
+            )
 
-        for match_section in matches_sections:
-            innerDiv = match_section.find_element(By.XPATH, "./div")
-            matchesDiv = innerDiv.find_elements(By.XPATH, "./div")[1]
-            matches = matchesDiv.find_elements(By.XPATH, "./div")[1:]
-            for match in matches:
-                match_link = match.find_element(By.XPATH, "./a").get_attribute("href")
-                match_links.append(match_link)
+            matches_sections = matches_sections_container.find_elements(
+                By.XPATH, "./div[contains(., '2024')]"
+            )
 
-        totalMacthesToScrape = len(match_links)
-        totalMatchesSuccessfullyScraped = 0
+            # print(len(matches_sections))
+
+            match_links = []
+
+            for match_section in matches_sections:
+                innerDiv = match_section.find_element(By.XPATH, "./div")
+                matchesDiv = innerDiv.find_elements(By.XPATH, "./div")[1]
+                matches = matchesDiv.find_elements(By.XPATH, "./div")[1:]
+                for match in matches:
+                    match_link = match.find_element(By.XPATH, "./a").get_attribute(
+                        "href"
+                    )
+                    match_links.append(match_link)
+
+            totalMacthesToScrape = len(match_links)
+            totalMatchesSuccessfullyScraped = 0
+        except:
+            continue
 
         # print(match_links)
         for matchChecked, match_link in enumerate(match_links):
