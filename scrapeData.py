@@ -185,22 +185,22 @@ def scrape():
                 )
 
                 buttons_with_map.insert(0, overview_button)
-                scroll_to_element_with_offset(
-                    driver, overview_button, 200
-                )  # Adjust the offset as needed
-                time.sleep(0.2)
 
                 for mapNum, button in enumerate(buttons_with_map):
-                    button.click()
-                    time.sleep(0.3)
                     # print("Button clicked")
                     teams = []
                     playersInMatch = []
+                    if mapNum == 0:
+                        active_table_xpath = "//div[contains(@id, 'panel-overview')]"
+                    else:
+                        active_table_xpath = (
+                            f"//div[contains(@id, 'panel-game-{mapNum-1}')]"
+                        )
                     table_body = WebDriverWait(driver, 3).until(
                         EC.presence_of_element_located(
                             (
                                 By.XPATH,
-                                "//table/tbody",
+                                active_table_xpath,
                             )
                         )
                     )
@@ -209,21 +209,13 @@ def scrape():
 
                     for i, row in enumerate(rows):  # player rows
                         if i == 0 or i == 5:
-                            active_table_xpath = (
-                                "//div[contains(@id, 'panel-overview')]//table/tbody"
-                            )
-                            table_body = WebDriverWait(driver, 3).until(
-                                EC.presence_of_element_located(
-                                    (By.XPATH, active_table_xpath)
-                                )
-                            )
                             tds = row.find_elements(By.XPATH, "./td")
                             nameCol = tds[0].find_element(By.XPATH, "./a/div")
                             innerTxt = nameCol.get_attribute("innerText")
                             teams.append(innerTxt)
                             continue
                         elif innerTxt == player:
-                            if button_contains_text(button, "Overview"):  # overall
+                            if mapNum == 0:  # overall
                                 print("Button contains overall!")
                                 mode = "Overall"
                                 kills = row.find_element(
@@ -242,11 +234,7 @@ def scrape():
                                 firstBloods = None
                                 ticks = None
 
-                            elif button_contains_text(
-                                button, "Map 1"
-                            ) or button_contains_text(
-                                button, "Map 4"
-                            ):  # hardpoint
+                            elif mapNum == 1 or mapNum == 4:  # hardpoint
                                 mode = "HardPoint"
                                 kills = row.find_element(
                                     By.XPATH, "./td[2]"
@@ -267,11 +255,7 @@ def scrape():
                                 )  # seconds
                                 firstBloods = None
                                 ticks = None
-                            elif (
-                                button_contains_text(button, "Map 2")
-                                or button_contains_text(button, "Map 5")
-                                or button_contains_text(button, "Map 7")
-                            ):  # SnD
+                            elif mapNum == 2 or mapNum == 5 or mapNum == 7:  # SnD
                                 mode = "Search_and_Destroy"
                                 kills = row.find_element(
                                     By.XPATH, "./td[2]"
@@ -292,11 +276,7 @@ def scrape():
                                 )  # seconds
                                 hillTime = None
                                 ticks = None
-                            elif button_contains_text(
-                                button, "Map 3"
-                            ) or button_contains_text(
-                                button, "Map 6"
-                            ):  # Control
+                            elif mapNum == 3 or mapNum == 6:  # Control
                                 mode = "Control"
                                 kills = tds[1].get_attribute("innerText")
                                 deaths = tds[2].get_attribute("innerText")
