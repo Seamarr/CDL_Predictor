@@ -103,12 +103,14 @@ def scrape():
         matches_button = WebDriverWait(driver, 3).until(
             EC.element_to_be_clickable((By.XPATH, mathes_button_xpath))
         )
-        driver.execute_script("arguments[0].scrollIntoView(true);", matches_button)
+        driver.execute_script(
+            "arguments[0].scrollIntoView(true);", matches_button)
         matches_button.click()
 
         completed_mathes_button_xpath = "//button[contains(., 'Completed Matches')]"
         completed_mathes_button = WebDriverWait(driver, 3).until(
-            EC.element_to_be_clickable((By.XPATH, completed_mathes_button_xpath))
+            EC.element_to_be_clickable(
+                (By.XPATH, completed_mathes_button_xpath))
         )
         completed_mathes_button.click()
 
@@ -133,7 +135,8 @@ def scrape():
             matchesDiv = innerDiv.find_elements(By.XPATH, "./div")[1]
             matches = matchesDiv.find_elements(By.XPATH, "./div")[1:]
             for match in matches:
-                match_link = match.find_element(By.XPATH, "./a").get_attribute("href")
+                match_link = match.find_element(
+                    By.XPATH, "./a").get_attribute("href")
                 match_links.append(match_link)
 
         # print(match_links)
@@ -282,7 +285,8 @@ def scrape():
                                 deaths = tds[2].get_attribute("innerText")
                                 kd = calculate_kd(int(kills), int(deaths))
                                 dmg = tds[5].get_attribute("innerText")
-                                ticks = tds[6].get_attribute("innerText")  # seconds
+                                ticks = tds[6].get_attribute(
+                                    "innerText")  # seconds
                                 hillTime = None
                                 firstBloods = None
                             else:
@@ -299,7 +303,7 @@ def scrape():
                                 "Match_ID": match_id,
                                 "Player": player,
                                 "Mode": mode,
-                                "Date": date,
+                                "Date": formatted_date,
                                 "Kills": kills,
                                 "Deaths": deaths,
                                 "KD": kd,
