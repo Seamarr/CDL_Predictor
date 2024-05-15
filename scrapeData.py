@@ -103,14 +103,12 @@ def scrape():
         matches_button = WebDriverWait(driver, 3).until(
             EC.element_to_be_clickable((By.XPATH, mathes_button_xpath))
         )
-        driver.execute_script(
-            "arguments[0].scrollIntoView(true);", matches_button)
+        driver.execute_script("arguments[0].scrollIntoView(true);", matches_button)
         matches_button.click()
 
         completed_mathes_button_xpath = "//button[contains(., 'Completed Matches')]"
         completed_mathes_button = WebDriverWait(driver, 3).until(
-            EC.element_to_be_clickable(
-                (By.XPATH, completed_mathes_button_xpath))
+            EC.element_to_be_clickable((By.XPATH, completed_mathes_button_xpath))
         )
         completed_mathes_button.click()
 
@@ -135,21 +133,21 @@ def scrape():
             matchesDiv = innerDiv.find_elements(By.XPATH, "./div")[1]
             matches = matchesDiv.find_elements(By.XPATH, "./div")[1:]
             for match in matches:
-                match_link = match.find_element(
-                    By.XPATH, "./a").get_attribute("href")
+                match_link = match.find_element(By.XPATH, "./a").get_attribute("href")
                 match_links.append(match_link)
+
+        totalMacthesToScrape = len(match_links)
+        totalMatchesSuccessfullyScraped = 0
 
         # print(match_links)
         for matchChecked, match_link in enumerate(match_links):
-            if matchChecked == 3:
-                break
             try:
                 driver.get(match_link)
                 time.sleep(1.5)
                 match_id = match_link.split("/")[4]
-                if match_id != "27304":
-                    continue
-                print("Match id: ", match_id)
+                print(
+                    f"Extracting {player}'s data for match #{match_id}... ({matchChecked+1}/{totalMacthesToScrape})"
+                )
 
                 date = WebDriverWait(driver, 3).until(
                     EC.visibility_of_element_located(
@@ -189,16 +187,19 @@ def scrape():
 
                 buttons_with_map.insert(0, overview_button)
 
+                successfulExtracts = 0
+
                 for mapNum, button in enumerate(buttons_with_map):
                     # print("Button clicked")
+                    error_extracting = 0
                     teams = []
                     playersInMatch = []
                     if mapNum == 0:
-                        active_table_xpath = "//div[contains(@id, 'panel-overview')]"
-                    else:
                         active_table_xpath = (
-                            f"//div[contains(@id, 'panel-game-{mapNum-1}')]"
+                            "//div[contains(@id, 'panel-overview')]//table/tbody"
                         )
+                    else:
+                        active_table_xpath = f"//div[contains(@id, 'panel-game-{mapNum-1}')]//table/tbody"
                     table_body = WebDriverWait(driver, 3).until(
                         EC.presence_of_element_located(
                             (
@@ -208,18 +209,21 @@ def scrape():
                         )
                     )
 
+                    # print("Table found: ", table_body)
+
                     rows = table_body.find_elements(By.XPATH, "./tr")
 
                     for i, row in enumerate(rows):  # player rows
+                        tds = row.find_elements(By.XPATH, "./td")
+                        nameCol = tds[0].find_element(By.XPATH, "./a/div")
+                        innerTxt = nameCol.get_attribute("innerText")
                         if i == 0 or i == 5:
-                            tds = row.find_elements(By.XPATH, "./td")
-                            nameCol = tds[0].find_element(By.XPATH, "./a/div")
-                            innerTxt = nameCol.get_attribute("innerText")
+                            # print("innertxt teamname: ", innerTxt)
                             teams.append(innerTxt)
                             continue
                         elif innerTxt == player:
                             if mapNum == 0:  # overall
-                                print("Button contains overall!")
+                                # print("Button contains overall!")
                                 mode = "Overall"
                                 kills = row.find_element(
                                     By.XPATH, "./td[2]"
@@ -285,11 +289,11 @@ def scrape():
                                 deaths = tds[2].get_attribute("innerText")
                                 kd = calculate_kd(int(kills), int(deaths))
                                 dmg = tds[5].get_attribute("innerText")
-                                ticks = tds[6].get_attribute(
-                                    "innerText")  # seconds
+                                ticks = tds[6].get_attribute("innerText")  # seconds
                                 hillTime = None
                                 firstBloods = None
                             else:
+                                error_extracting = 1
                                 mode = None
                                 kills = None
                                 deaths = None
@@ -312,8 +316,20 @@ def scrape():
                                 "FirstBloods": firstBloods,
                                 "Ticks": ticks,
                             }
+
+                            mapName = "Overall" if mapNum == 0 else f"Map {mapNum}"
+                            if error_extracting:
+                                print(
+                                    f"Error extracting data for {player} in match #{match_id} on {mapName}"
+                                )
+                            else:
+                                successfulExtracts += 1
+                                print(
+                                    f"Successfully extracted data for {player} in match #{match_id} on {mapName}"
+                                )
                         playersInMatch.append(innerTxt)
                     # print(playersInMatch)
+
                     isInFirstTeam = False
                     for i in range(len(playersInMatch)):
                         if playersInMatch[i] == player and i <= 3:
@@ -343,11 +359,18 @@ def scrape():
                         curPlayerStats["Enemy4"] = playersInMatch[3]
 
                     allPlayerStats.append(curPlayerStats)
-                    # print(teams)
+                totalMatchesSuccessfullyScraped += 1
 
             except Exception as e:
+                print(f"Error extracting data for {player} in match #{match_id}:")
                 print(e)
                 continue
+            print(
+                f"Successfully extracted {successfulExtracts}/{len(buttons_with_map)} maps(including overview) for {player} in match #{match_id}"
+            )
+        print(
+            f"Successfully extracted data on {totalMatchesSuccessfullyScraped}/{totalMacthesToScrape} matches for {player}"
+        )
 
     # print(f"{player} : {match_links}")
 
@@ -357,7 +380,7 @@ def scrape():
 
 def main():
     allPlayerStats = scrape()
-    print(allPlayerStats)
+    # print(allPlayerStats)
 
 
 if __name__ == "__main__":
