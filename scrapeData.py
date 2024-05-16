@@ -6,16 +6,13 @@ from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from bs4 import BeautifulSoup
 import time
 from datetime import datetime
-import csv
 from selenium.webdriver.chrome.options import Options
 import pandas as pd
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from datetime import datetime
 import numpy as np
-import joblib
 
 TEAMS = {
     "Atlanta FaZe",
