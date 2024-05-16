@@ -1,16 +1,26 @@
+# Scraping the data
+
+This will take some time, but make sure to gather the data necessary by running the scraping script:
+
+```shell
+pip install -r requirements.txt
+py ./scrapeData.py
+```
+
+After some time, the data will be saved into a file named "preprocessed_player_stats.csv". Rename this to whatever
+you would like and make sure to change the data loading in whatever model you are using to this new file.
+
 # Usage (Without GPU acceleration)
 
 Simply run the command
 
-```python
-pip install -r requirements.txt
+```shell
 py ./sklearn_model.py
 ```
 
 # Usage (With GPU acceleration using xgboost and lightgbm libraries)
 
-```python
-pip install -r requirements.txt
+```shell
 py ./gpuaccel_model.py
 ```
 
@@ -37,4 +47,9 @@ then you can run
 python ./cuML_model.py
 ```
 
-and you should see your results!
+## Common bugs/errors
+
+### Feature arrays are not updated
+
+The feature array in the models may be out of date. For ex. a new player has joined the league that we
+are not accounting for in the feature array. You will need to get the new players and add them to the feature array.
