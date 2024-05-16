@@ -10,14 +10,6 @@ py ./scrapeData.py
 After some time, the data will be saved into a file named "preprocessed_player_stats.csv". Rename this to whatever
 you would like and make sure to change the data loading in whatever model you are using to this new file.
 
-# Usage (Without GPU acceleration) SLOW
-
-Simply run the command
-
-```shell
-py ./sklearn_model.py
-```
-
 # Usage (With GPU acceleration using pytorch) RECOMMENDED
 
 ### Create a Conda Environment
@@ -44,6 +36,12 @@ nvidia-smi
 in a shell to see what CUDA version your gpu supports. Then, in the pip install replace "{VERSIONNUM}" with your compatible version.
 Version 11.8 will be "118" and 12.4 will be "124", etc.
 
+To deactivate, run:
+
+```shell
+conda deactivate
+```
+
 ### Launch Jupyter Notebook
 
 ```shell
@@ -51,6 +49,14 @@ jupyter notebook
 ```
 
 Use "torch_modelv2.ipynb", select the kernel of your jupyter notebook link, and thats it!
+
+# Usage (Without GPU acceleration) SLOW
+
+Simply run the command
+
+```shell
+py ./sklearn_model.py
+```
 
 # Usage (With GPU acceleration using xgboost and lightgbm libraries)
 
