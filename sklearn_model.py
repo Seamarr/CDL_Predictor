@@ -1,23 +1,20 @@
 import pandas as pd
-from sklearn.model_selection import GroupKFold, cross_val_score, train_test_split
-from sklearn.ensemble import (
-    RandomForestClassifier,
-    GradientBoostingClassifier,
-    VotingClassifier,
-    StackingClassifier,
-)
+from sklearn.model_selection import GroupKFold, cross_val_score, GridSearchCV
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import accuracy_score, classification_report
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
+from xgboost import XGBClassifier
+from lightgbm import LGBMClassifier
+from sklearn.ensemble import VotingClassifier, StackingClassifier
 
 # Step 1: Load and prepare the data
-df = pd.read_csv("preprocessed_player_stats_Trial2.csv")
+df = pd.read_csv("preprocessed_player_stats_Trial3.csv")
 
 # Set the threshold directly
-X_value = 25.5  # Replace with the value of X we are interested in
+X_value = 20.0  # Replace with the value of X we are interested in
 df["Over_X_Kills"] = df["Kills"].apply(lambda x: 1 if x > X_value else 0)
 
 # Select relevant features (excluding 'Kills')
@@ -209,30 +206,54 @@ df = df[features + ["Over_X_Kills", "Match_ID"]]
 # Handle missing values
 df.fillna(0, inplace=True)
 
-# Check correlation with target
-correlations = df.corr()["Over_X_Kills"].sort_values(ascending=False)
-print(correlations.head(10))  # Top 10 positively correlated features
-print(correlations.tail(10))  # Top 10 negatively correlated features
-
 # Step 2: Group-based Cross-Validation for Model Selection and Hyperparameter Tuning
 X = df.drop(columns=["Over_X_Kills", "Match_ID"])
 y = df["Over_X_Kills"]
 groups = df["Match_ID"]
 
-# Define the models
-rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
-lr_model = LogisticRegression(C=1.0, penalty="l2", solver="liblinear")
-svc_model = SVC(C=1.0, probability=True, max_iter=10000)
-gb_model = GradientBoostingClassifier(n_estimators=100, random_state=42)
-knn_model = KNeighborsClassifier(n_neighbors=5)
+# Define the parameter grids
+param_grid_xgb = {
+    "n_estimators": [50, 100, 200],
+    "max_depth": [3, 5, 7],
+    "learning_rate": [0.01, 0.1, 0.2],
+}
+
+param_grid_lgbm = {
+    "n_estimators": [50, 100, 200],
+    "max_depth": [3, 5, 7],
+    "learning_rate": [0.01, 0.1, 0.2],
+    "num_leaves": [15, 31, 63, 127],  # Adding num_leaves parameter
+}
+
+param_grid_lr = {"C": [0.01, 0.1, 1, 10], "penalty": ["l2"]}
+
+param_grid_svc = {"C": [0.1, 1, 10], "kernel": ["linear", "rbf"], "max_iter": [10000]}
+
+param_grid_knn = {"n_neighbors": [3, 5, 7], "weights": ["uniform", "distance"]}
+
+# Create the models with GridSearchCV
+xgb_model = GridSearchCV(
+    XGBClassifier(tree_method="hist", gpu_id=0, random_state=42),
+    param_grid_xgb,
+    cv=3,
+    n_jobs=-1,
+)
+lgbm_model = GridSearchCV(
+    LGBMClassifier(device="gpu", random_state=42), param_grid_lgbm, cv=3, n_jobs=-1
+)
+lr_model = GridSearchCV(
+    LogisticRegression(solver="liblinear"), param_grid_lr, cv=3, n_jobs=-1
+)
+svc_model = GridSearchCV(SVC(probability=True), param_grid_svc, cv=3, n_jobs=-1)
+knn_model = GridSearchCV(KNeighborsClassifier(), param_grid_knn, cv=3, n_jobs=-1)
 
 # Ensemble model for soft voting
 soft_voting_model = VotingClassifier(
     estimators=[
-        ("rf", rf_model),
+        ("xgb", xgb_model),
+        ("lgbm", lgbm_model),
         ("lr", lr_model),
         ("svc", svc_model),
-        ("gb", gb_model),
         ("knn", knn_model),
     ],
     voting="soft",
@@ -264,20 +285,31 @@ print(f"Soft Voting - Classification Report:\n{report_soft}")
 
 # Step 3: Stacking Method
 stacking_estimators = [
-    ("rf", rf_model),
+    ("xgb", xgb_model),
+    ("lgbm", lgbm_model),
     (
         "lr",
         make_pipeline(
             StandardScaler(),
-            LogisticRegression(C=1.0, penalty="l2", solver="liblinear"),
+            GridSearchCV(
+                LogisticRegression(solver="liblinear"), param_grid_lr, cv=3, n_jobs=-1
+            ),
         ),
     ),
     (
         "svc",
-        make_pipeline(StandardScaler(), SVC(C=1.0, probability=True, max_iter=10000)),
+        make_pipeline(
+            StandardScaler(),
+            GridSearchCV(SVC(probability=True), param_grid_svc, cv=3, n_jobs=-1),
+        ),
     ),
-    ("gb", gb_model),
-    ("knn", make_pipeline(StandardScaler(), KNeighborsClassifier(n_neighbors=5))),
+    (
+        "knn",
+        make_pipeline(
+            StandardScaler(),
+            GridSearchCV(KNeighborsClassifier(), param_grid_knn, cv=3, n_jobs=-1),
+        ),
+    ),
 ]
 
 stacking_model = StackingClassifier(

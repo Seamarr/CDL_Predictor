@@ -1,6 +1,5 @@
 import pandas as pd
 import cudf
-import numpy as np
 from cuml.ensemble import RandomForestClassifier as cuRF
 from cuml.metrics import accuracy_score as cu_accuracy_score
 from sklearn.model_selection import GroupKFold, GridSearchCV
@@ -8,7 +7,7 @@ from sklearn.metrics import classification_report
 
 
 # Load and prepare the data
-df = pd.read_csv("preprocessed_player_stats.csv")
+df = pd.read_csv("preprocessed_player_stats_Trial3.csv")
 df = cudf.DataFrame.from_pandas(df)
 
 # Set the threshold directly

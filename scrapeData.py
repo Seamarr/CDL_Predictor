@@ -458,7 +458,7 @@ def clean_data(data):
 def preprocess_data_player_role_combinations(df):
     # One-hot encode categorical variables for modes and teams
     categorical_columns = ["Mode", "PlayerTeam", "EnemyTeam"]
-    df = pd.get_dummies(df, columns=categorical_columns, dummy_na=1)
+    df = pd.get_dummies(df, columns=categorical_columns, dummy_na=True)
 
     # Rename columns to avoid spaces
     df.columns = df.columns.str.replace(" ", "_")
@@ -483,15 +483,15 @@ def preprocess_data_player_role_combinations(df):
         ].values.ravel("K")
     ).unique()
 
-    # Initialize a new DataFrame to hold the new columns
-    new_columns_df = pd.DataFrame()
+    # Create a dictionary to hold the new columns
+    new_columns_dict = {}
 
     # Create binary features for each player-role combination
     for player in all_players:
-        new_columns_df[f"{player}_Player"] = df["Player"].apply(
+        new_columns_dict[f"{player}_Player"] = df["Player"].apply(
             lambda x: 1 if x == player else 0
         )
-        new_columns_df[f"{player}_Teammate"] = df.apply(
+        new_columns_dict[f"{player}_Teammate"] = df.apply(
             lambda row: (
                 1
                 if player in [row["TeamMate1"], row["TeamMate2"], row["TeamMate3"]]
@@ -499,7 +499,7 @@ def preprocess_data_player_role_combinations(df):
             ),
             axis=1,
         )
-        new_columns_df[f"{player}_Enemy"] = df.apply(
+        new_columns_dict[f"{player}_Enemy"] = df.apply(
             lambda row: (
                 1
                 if player
@@ -508,6 +508,9 @@ def preprocess_data_player_role_combinations(df):
             ),
             axis=1,
         )
+
+    # Create a DataFrame from the new columns dictionary
+    new_columns_df = pd.DataFrame(new_columns_dict)
 
     # Concatenate the new columns with the original DataFrame
     df = pd.concat([df, new_columns_df], axis=1)
@@ -527,6 +530,12 @@ def preprocess_data_player_role_combinations(df):
         inplace=True,
     )
 
+    # Handle infinity or very large values
+    df.replace([np.inf, -np.inf], np.nan, inplace=True)
+
+    # Fill NaN values with 0 (or another appropriate value if needed)
+    df.fillna(0, inplace=True)
+
     # Scale numerical features (excluding 'Kills')
     numeric_columns = [
         "Deaths",
@@ -542,7 +551,6 @@ def preprocess_data_player_role_combinations(df):
     return df
 
 
-# Example usage:
 def main():
     allPlayerStats = scrape()  # Your scrape function here
     print("Cleaning and preprocessing data...")

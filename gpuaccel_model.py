@@ -6,11 +6,18 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import accuracy_score, classification_report
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
-from xgboost import XGBClassifier
+from xgboost import XGBClassifier, DMatrix
 from lightgbm import LGBMClassifier
+from sklearn.ensemble import (
+    RandomForestClassifier,
+    GradientBoostingClassifier,
+    VotingClassifier,
+    StackingClassifier,
+)
+import time
 
 # Step 1: Load and prepare the data
-df = pd.read_csv("preprocessed_player_stats_Trial2.csv")
+df = pd.read_csv("preprocessed_player_stats_Trial3.csv")
 
 # Set the threshold directly
 X_value = 25.5  # Replace with the value of X we are interested in
@@ -199,7 +206,6 @@ features = [
     "oJohnny_Enemy",
 ]
 
-
 df = df[features + ["Over_X_Kills", "Match_ID"]]
 
 # Handle missing values
@@ -212,32 +218,44 @@ groups = df["Match_ID"]
 
 # Define the parameter grids
 param_grid_xgb = {
-    "n_estimators": [50, 100, 200],
-    "max_depth": [3, 5, 7],
-    "learning_rate": [0.01, 0.1, 0.2],
+    "n_estimators": [50],  # Simplified for testing
+    "max_depth": [3],  # Simplified for testing
+    "learning_rate": [0.1],  # Simplified for testing
+    "tree_method": ["gpu_hist"],
+    "verbosity": [0],  # Suppress warnings
 }
 
 param_grid_lgbm = {
-    "n_estimators": [50, 100, 200],
-    "max_depth": [3, 5, 7],
-    "learning_rate": [0.01, 0.1, 0.2],
+    "n_estimators": [50],  # Simplified for testing
+    "max_depth": [3],  # Simplified for testing
+    "learning_rate": [0.1],  # Simplified for testing
+    "num_leaves": [31],  # Simplified for testing
+    "device_type": ["gpu"],
+    "min_split_gain": [0.0],  # Simplified for testing
+    "min_child_samples": [20],  # Simplified for testing
+    "min_child_weight": [0.001],  # Simplified for testing
+    "verbose": [-1],  # Suppress warnings
 }
 
-param_grid_lr = {"C": [0.01, 0.1, 1, 10], "penalty": ["l2"]}
+param_grid_lr = {"C": [1], "penalty": ["l2"]}  # Simplified for testing
 
-param_grid_svc = {"C": [0.1, 1, 10], "kernel": ["linear", "rbf"], "max_iter": [10000]}
+param_grid_svc = {
+    "C": [1],
+    "kernel": ["linear"],
+    "max_iter": [10000],
+}  # Simplified for testing
 
-param_grid_knn = {"n_neighbors": [3, 5, 7], "weights": ["uniform", "distance"]}
+param_grid_knn = {"n_neighbors": [3], "weights": ["uniform"]}  # Simplified for testing
 
 # Create the models with GridSearchCV
 xgb_model = GridSearchCV(
-    XGBClassifier(tree_method="gpu_hist", gpu_id=0, random_state=42),
+    XGBClassifier(random_state=42, verbosity=0),  # Set verbosity here
     param_grid_xgb,
     cv=3,
     n_jobs=-1,
 )
 lgbm_model = GridSearchCV(
-    LGBMClassifier(device="gpu", random_state=42), param_grid_lgbm, cv=3, n_jobs=-1
+    LGBMClassifier(random_state=42, verbose=-1), param_grid_lgbm, cv=3, n_jobs=-1
 )
 lr_model = GridSearchCV(
     LogisticRegression(solver="liblinear"), param_grid_lr, cv=3, n_jobs=-1
@@ -259,10 +277,13 @@ soft_voting_model = VotingClassifier(
 
 # Group-based cross-validation for soft voting
 group_kfold = GroupKFold(n_splits=5)
+start_time = time.time()
 soft_cv_scores = cross_val_score(soft_voting_model, X, y, cv=group_kfold, groups=groups)
+end_time = time.time()
 
 print(f"Soft Voting - Cross-validation scores: {soft_cv_scores}")
 print(f"Soft Voting - Mean cross-validation score: {soft_cv_scores.mean()}")
+print(f"Time taken for cross-validation: {end_time - start_time} seconds")
 
 # Train-Test Split for Final Model Evaluation (Group-based)
 train_idx, test_idx = next(group_kfold.split(X, y, groups=groups))
@@ -270,7 +291,9 @@ X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
 y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
 
 # Train the final soft voting model
+start_time = time.time()
 soft_voting_model.fit(X_train, y_train)
+end_time = time.time()
 
 # Evaluate the final soft voting model
 y_pred_soft = soft_voting_model.predict(X_test)
@@ -280,6 +303,7 @@ report_soft = classification_report(y_test, y_pred_soft)
 
 print(f"Soft Voting - Accuracy: {accuracy_soft}")
 print(f"Soft Voting - Classification Report:\n{report_soft}")
+print(f"Time taken to fit the model: {end_time - start_time} seconds")
 
 # Step 3: Stacking Method
 stacking_estimators = [
@@ -315,15 +339,20 @@ stacking_model = StackingClassifier(
 )
 
 # Group-based cross-validation for stacking
+start_time = time.time()
 stacking_cv_scores = cross_val_score(
     stacking_model, X, y, cv=group_kfold, groups=groups
 )
+end_time = time.time()
 
 print(f"Stacking - Cross-validation scores: {stacking_cv_scores}")
 print(f"Stacking - Mean cross-validation score: {stacking_cv_scores.mean()}")
+print(f"Time taken for cross-validation: {end_time - start_time} seconds")
 
 # Train the final stacking model
+start_time = time.time()
 stacking_model.fit(X_train, y_train)
+end_time = time.time()
 
 # Evaluate the final stacking model
 y_pred_stacking = stacking_model.predict(X_test)
@@ -333,6 +362,7 @@ report_stacking = classification_report(y_test, y_pred_stacking)
 
 print(f"Stacking - Accuracy: {accuracy_stacking}")
 print(f"Stacking - Classification Report:\n{report_stacking}")
+print(f"Time taken to fit the model: {end_time - start_time} seconds")
 
 
 # Step 4: Making Predictions
@@ -374,14 +404,23 @@ input_data = prepare_input(
     game_mode, player_team, enemy_team, player, teammates, enemies
 )
 
-# Prediction using soft voting model
-prediction_soft = soft_voting_model.predict(input_data)
+# Ensure input data is transferred to the correct device for prediction
+input_data_dmatrix = DMatrix(data=input_data)
+
+xgb_model.best_estimator_.set_params(device="cuda", verbosity=0)
+start_time = time.time()
+prediction_soft = xgb_model.best_estimator_.predict(input_data_dmatrix)
+end_time = time.time()
 print(
     f'Soft Voting Prediction: {"Over" if prediction_soft[0] == 1 else "Under"} {X_value} kills'
 )
+print(f"Time taken to make prediction: {end_time - start_time} seconds")
 
 # Prediction using stacking model
+start_time = time.time()
 prediction_stacking = stacking_model.predict(input_data)
+end_time = time.time()
 print(
     f'Stacking Prediction: {"Over" if prediction_stacking[0] == 1 else "Under"} {X_value} kills'
 )
+print(f"Time taken to make prediction: {end_time - start_time} seconds")

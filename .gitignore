@@ -13,6 +13,7 @@ Thumbs.db
 *.ova
 *.pdf
 
+
 # Executable and binary files
 # Add the name of your binary from the Makefile if it's not "a.out"
 a.out
