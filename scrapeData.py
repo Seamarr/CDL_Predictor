@@ -1,6 +1,8 @@
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.firefox.service import Service as FirefoxService
+from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -13,6 +15,7 @@ import pandas as pd
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from datetime import datetime
 import numpy as np
+import joblib
 
 TEAMS = {
     "Atlanta FaZe",
@@ -29,13 +32,27 @@ TEAMS = {
     "Toronto Ultra",
 }
 
+# Chrome
+# def initialize_driver():
+#     chrome_options = Options()
+#     chrome_options.add_argument("--ignore-certificate-errors")
+#     chrome_options.add_argument("--ignore-ssl-errors")
+#     chrome_options.add_argument("--disable-web-security")
+#     chrome_options.add_argument("--allow-running-insecure-content")
+#     service = ChromeService(ChromeDriverManager().install())
+#     driver = webdriver.Chrome(service=service, options=chrome_options)
+#     return driver
 
+
+# Firefox
 def initialize_driver():
     chrome_options = Options()
     chrome_options.add_argument("--ignore-certificate-errors")
     chrome_options.add_argument("--ignore-ssl-errors")
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=chrome_options)
+    chrome_options.add_argument("--disable-web-security")
+    chrome_options.add_argument("--allow-running-insecure-content")
+    service = FirefoxService(GeckoDriverManager().install())
+    driver = webdriver.Firefox(service=service)
     return driver
 
 
@@ -73,7 +90,7 @@ def scrape():
 
     button_xpath = "/html/body/div[1]/div/div[1]/main/div/div[1]/div/div/div[2]/div[3]/div[1]/button[2]/div"
     button = WebDriverWait(driver, 3).until(
-        EC.element_to_be_clickable((By.XPATH, button_xpath))
+        EC.element_to_be_clickable((By.XPATH, "//button[contains(@id, 'tab-players')]"))
     )
     button.click()
 
@@ -83,7 +100,9 @@ def scrape():
     # Find all player elements (adjust the selector as needed)
     players_container_xpath = "/html/body/div[1]/div/div[1]/main/div/div[1]/div/div/div[2]/div[3]/div[3]/div/div[2]"
     players_container = WebDriverWait(driver, 3).until(
-        EC.visibility_of_element_located((By.XPATH, players_container_xpath))
+        EC.visibility_of_element_located(
+            (By.XPATH, "//div[contains(@id, 'panel-players')]")
+        )
     )
 
     # Collect all 'a' tags within the specified container
@@ -103,8 +122,8 @@ def scrape():
     allPlayerStats = []
 
     for player, player_link in player_links_dict.items():
-        # if player != "Clayster" and player != "aBeZy":
-        #     continue
+        if player != "Clayster" and player != "aBeZy":
+            continue
 
         driver.get(player_link)
         time.sleep(1.5)
@@ -166,8 +185,8 @@ def scrape():
 
         # print(match_links)
         for matchChecked, match_link in enumerate(match_links):
-            # if matchChecked == 3:
-            #     break
+            if matchChecked == 3:
+                break
             try:
                 driver.get(match_link)
                 time.sleep(1.5)
@@ -395,6 +414,7 @@ def scrape():
             print(
                 f"Successfully extracted {successfulExtracts}/{len(buttons_with_map)} maps(including overview) for {player} in match #{match_id}"
             )
+
         print(
             f"Successfully extracted data on {totalMatchesSuccessfullyScraped}/{totalMacthesToScrape} matches for {player}"
         )
@@ -438,10 +458,14 @@ def clean_data(data):
 def preprocess_data_player_role_combinations(df):
     # One-hot encode categorical variables for modes and teams
     categorical_columns = ["Mode", "PlayerTeam", "EnemyTeam"]
-    df = pd.get_dummies(df, columns=categorical_columns, dummy_na=True)
+    df = pd.get_dummies(df, columns=categorical_columns, dummy_na=1)
 
     # Rename columns to avoid spaces
     df.columns = df.columns.str.replace(" ", "_")
+
+    # Convert boolean columns to integers (1/0)
+    boolean_columns = df.select_dtypes(include=["boolean"]).columns
+    df[boolean_columns] = df[boolean_columns].astype(int)
 
     # Get unique player names from all relevant columns
     all_players = pd.Series(
@@ -459,10 +483,15 @@ def preprocess_data_player_role_combinations(df):
         ].values.ravel("K")
     ).unique()
 
+    # Initialize a new DataFrame to hold the new columns
+    new_columns_df = pd.DataFrame()
+
     # Create binary features for each player-role combination
     for player in all_players:
-        df[f"{player}_Player"] = df["Player"].apply(lambda x: 1 if x == player else 0)
-        df[f"{player}_Teammate"] = df.apply(
+        new_columns_df[f"{player}_Player"] = df["Player"].apply(
+            lambda x: 1 if x == player else 0
+        )
+        new_columns_df[f"{player}_Teammate"] = df.apply(
             lambda row: (
                 1
                 if player in [row["TeamMate1"], row["TeamMate2"], row["TeamMate3"]]
@@ -470,7 +499,7 @@ def preprocess_data_player_role_combinations(df):
             ),
             axis=1,
         )
-        df[f"{player}_Enemy"] = df.apply(
+        new_columns_df[f"{player}_Enemy"] = df.apply(
             lambda row: (
                 1
                 if player
@@ -479,6 +508,9 @@ def preprocess_data_player_role_combinations(df):
             ),
             axis=1,
         )
+
+    # Concatenate the new columns with the original DataFrame
+    df = pd.concat([df, new_columns_df], axis=1)
 
     # Drop the original player-related columns
     df.drop(
@@ -495,9 +527,8 @@ def preprocess_data_player_role_combinations(df):
         inplace=True,
     )
 
-    # Scale numerical features
+    # Scale numerical features (excluding 'Kills')
     numeric_columns = [
-        "Kills",
         "Deaths",
         "KD",
         "Damage",
@@ -514,7 +545,7 @@ def preprocess_data_player_role_combinations(df):
 # Example usage:
 def main():
     allPlayerStats = scrape()  # Your scrape function here
-
+    print("Cleaning and preprocessing data...")
     # Clean the data
     cleaned_data = clean_data(allPlayerStats)
 
@@ -526,10 +557,7 @@ def main():
 
     # Save preprocessed (scaled) data to CSV
     preprocessed_data.to_csv("preprocessed_player_stats.csv", index=False)
-
-    # Print some of the data to verify
-    print(cleaned_data.head())
-    print(preprocessed_data.head())
+    print("Data successfully saved to csv")
 
 
 if __name__ == "__main__":
