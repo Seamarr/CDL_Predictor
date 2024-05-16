@@ -122,8 +122,8 @@ def scrape():
     allPlayerStats = []
 
     for player, player_link in player_links_dict.items():
-        if player != "Clayster" and player != "aBeZy":
-            continue
+        # if player != "Clayster" and player != "aBeZy":
+        #     continue
 
         driver.get(player_link)
         time.sleep(1.5)
@@ -185,8 +185,8 @@ def scrape():
 
         # print(match_links)
         for matchChecked, match_link in enumerate(match_links):
-            if matchChecked == 3:
-                break
+            # if matchChecked == 3:
+            #     break
             try:
                 driver.get(match_link)
                 time.sleep(1.5)
