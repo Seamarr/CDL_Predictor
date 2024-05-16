@@ -4,11 +4,17 @@ Simply run the command
 
 ```python
 pip install -r requirements.txt
+py ./sklearn_model.py
 ```
 
-then just run the model.py script
+# Usage (With GPU acceleration using xgboost and lightgbm libraries)
 
-# Usage (With GPU acceleration in Windows 64-bit)
+```python
+pip install -r requirements.txt
+py ./gpuaccel_model.py
+```
+
+# Usage (With GPU acceleration using cuML in Windows 64-bit)
 
 Open a WSL terminal and run the following commands:
 
@@ -28,7 +34,7 @@ conda install pandas numpy matplotlib
 then you can run
 
 ```shell
-python ./model_v2.py
+python ./cuML_model.py
 ```
 
 and you should see your results!

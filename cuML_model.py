@@ -8,7 +8,7 @@ from sklearn.metrics import classification_report
 
 
 # Load and prepare the data
-df = pd.read_csv("preprocessed_player_stats_Trial2.csv")
+df = pd.read_csv("preprocessed_player_stats.csv")
 df = cudf.DataFrame.from_pandas(df)
 
 # Set the threshold directly
