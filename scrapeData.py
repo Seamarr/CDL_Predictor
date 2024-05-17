@@ -75,7 +75,7 @@ def calculate_kd(kills, deaths):
     return round(kd_ratio, 2)
 
 
-def scrape():
+def scrape(specific_players_and_matches={}, specific_matches=[]):
 
     # Setup WebDriver
     driver = initialize_driver()
@@ -121,7 +121,10 @@ def scrape():
     for player, player_link in player_links_dict.items():
         # if player != "Clayster" and player != "aBeZy":
         #     continue
-
+        if specific_players_and_matches and player not in list(
+            specific_players_and_matches.keys()
+        ):
+            continue
         driver.get(player_link)
         time.sleep(1.5)
 
@@ -182,12 +185,22 @@ def scrape():
 
         # print(match_links)
         for matchChecked, match_link in enumerate(match_links):
+            try:
+                match_id = match_link.split("/")[4]
+            except:
+                continue
             # if matchChecked == 3:
             #     break
+            if (
+                specific_players_and_matches
+                and match_id not in specific_players_and_matches[player]
+            ):
+                continue
+            if specific_matches and match_id not in specific_matches:
+                continue
             try:
                 driver.get(match_link)
                 time.sleep(1.5)
-                match_id = match_link.split("/")[4]
                 print(
                     f"Extracting {player}'s data for match #{match_id}... ({matchChecked+1}/{totalMacthesToScrape})"
                 )
@@ -549,7 +562,28 @@ def preprocess_data_player_role_combinations(df):
 
 
 def main():
-    allPlayerStats = scrape()  # Your scrape function here
+    specific_players_and_matches = {
+        "Vikul": ["70648"],
+        "MettalZ": ["70648"],
+        "ReeaL": ["70648"],
+        "Lucky": ["70648"],
+        "Attach": ["70648"],
+        "Gio": ["70648"],
+        "Nero": ["70648"],
+        "oJohnny": ["70648"],
+        "Ghosty": ["70649"],
+        "JoeDeceives": ["70649"],
+        "Kremp": ["70649"],
+        "Nastie": ["70649"],
+        "Beans": ["70649"],
+        "Pentagrxm": ["70649"],
+        "Priestahh": ["70649"],
+        "Snoopy": ["70649"],
+    }
+    specific_matches = ["70648", "70649"]
+    allPlayerStats = scrape(
+        specific_matches=specific_matches
+    )  # Your scrape function here
     print("Cleaning and preprocessing data...")
     # Clean the data
     cleaned_data = clean_data(allPlayerStats)
@@ -558,10 +592,10 @@ def main():
     preprocessed_data = preprocess_data_player_role_combinations(cleaned_data.copy())
 
     # Save cleaned (but not scaled) data to CSV
-    cleaned_data.to_csv("cleaned_player_stats.csv", index=False)
+    cleaned_data.to_csv("./data/cleaned_player_stats.csv", index=False)
 
     # Save preprocessed (scaled) data to CSV
-    preprocessed_data.to_csv("preprocessed_player_stats.csv", index=False)
+    preprocessed_data.to_csv("./data/preprocessed_player_stats.csv", index=False)
     print("Data successfully saved to csv")
 
 
