@@ -44,3 +44,7 @@ venv/
 
 # Anything else
 *.csv
+*.tsv 
+*.json
+*.xml
+*.out.tfevents
