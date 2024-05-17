@@ -17,6 +17,8 @@ from sklearn.model_selection import KFold
 from sklearn.model_selection import GridSearchCV
 from sklearn.base import BaseEstimator, ClassifierMixin
 import xgboost as xgb
+import catboost as cb
+import autosklearn.classification
 
 
 class PyTorchModelWrapperV1(BaseEstimator, ClassifierMixin):
@@ -42,9 +44,6 @@ class PyTorchModelWrapperV1(BaseEstimator, ClassifierMixin):
             # Return probabilities for both classes (1-p and p)
             probabilities = torch.cat((1 - predictions, predictions), dim=1)
             return probabilities.numpy()
-
-
-# Data loading and preparation
 
 
 class ModelV1:
@@ -169,8 +168,8 @@ class ModelV1:
                 loss.backward()
                 optimizer.step()
 
-                if (epoch + 1) % 2 == 0:
-                    print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}")
+                # if (epoch + 1) % 2 == 0:
+                #     print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}")
 
         # Train the models
         model1 = NeuralNetwork1()
@@ -235,8 +234,8 @@ class ModelV1:
             y_test.numpy(), ensemble_predictions, zero_division=0
         )
 
-        print(f"Ensemble Test Accuracy: {accuracy}")
-        print(f"Ensemble Classification Report:\n{report}")
+        # print(f"Ensemble Test Accuracy: {accuracy}")
+        # print(f"Ensemble Classification Report:\n{report}")
 
         # Making predictions
         def prepare_input(
@@ -288,8 +287,14 @@ class ModelV1:
         # Making a prediction with the ensemble
         ensemble_prediction = ensemble.predict(input_data)
         result = "Over" if ensemble_prediction[0] == 1 else "Under"
+        probabilities = ensemble.predict_proba(input_data)
+        probability = probabilities[0][1] if result == "Over" else probabilities[0][0]
 
-        return f"{result} {self.X_value} kills"
+        return (
+            f'Prediction: {result} {self.X_value} kills\nProbability of "Over": {probabilities[0][1]:.4f}\nProbability of "Under": {probabilities[0][0]:.4f}',
+            result,
+            probability,
+        )
 
 
 class ModelV2:
@@ -318,10 +323,10 @@ class ModelV2:
 
     def train_and_predict(self):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        if device.type == "cuda":
-            print("Using CUDA (GPU)")
-        else:
-            print("Using CPU")
+        # if device.type == "cuda":
+        #     print("Using CUDA (GPU)")
+        # else:
+        #     print("Using CPU")
 
         df = self.df.copy()
         df["Over_X_Kills"] = df["Kills"].apply(lambda x: 1 if x > self.X_value else 0)
@@ -447,6 +452,12 @@ class ModelV2:
             "learning_rate": [0.01, 0.1, 0.3],
         }
 
+        param_grid_cb = {
+            "depth": [4, 6, 10],
+            "learning_rate": [0.01, 0.1, 0.3],
+            "iterations": [100, 200, 300],
+        }
+
         knn_model = GridSearchCV(
             KNeighborsClassifier(), param_grid_knn, cv=3, n_jobs=-1
         )
@@ -462,6 +473,9 @@ class ModelV2:
             cv=3,
             n_jobs=-1,
         )
+        cb_model = GridSearchCV(
+            cb.CatBoostClassifier(silent=True), param_grid_cb, cv=3, n_jobs=-1
+        )
 
         knn_model.fit(X_train.cpu().numpy(), y_train.cpu().numpy().ravel())
         logistic_regression_model.fit(
@@ -469,6 +483,7 @@ class ModelV2:
         )
         random_forest_model.fit(X_train.cpu().numpy(), y_train.cpu().numpy().ravel())
         xgb_model.fit(X_train.cpu().numpy(), y_train.cpu().numpy().ravel())
+        cb_model.fit(X_train.cpu().numpy(), y_train.cpu().numpy().ravel())
 
         class PyTorchModelWrapper(BaseEstimator, ClassifierMixin):
             def __init__(self, model):
@@ -504,6 +519,7 @@ class ModelV2:
                 ("log_reg", logistic_regression_model),
                 ("rf", random_forest_model),
                 ("xgb", xgb_model),
+                ("cb", cb_model),
             ],
             voting="soft",
         )
@@ -515,8 +531,8 @@ class ModelV2:
             y_test.cpu().numpy(), ensemble_predictions, zero_division=0
         )
 
-        print(f"Ensemble Test Accuracy: {accuracy}")
-        print(f"Ensemble Classification Report:\n{report}")
+        # print(f"Ensemble Test Accuracy: {accuracy}")
+        # print(f"Ensemble Classification Report:\n{report}")
 
         def prepare_input(
             game_mode, player_team, enemy_team, player, teammates, enemies
@@ -547,18 +563,759 @@ class ModelV2:
         prediction = ensemble.predict(input_array)
         result = "Over" if prediction[0] == 1 else "Under"
         probabilities = ensemble.predict_proba(input_array)
+        probability = probabilities[0][1] if result == "Over" else probabilities[0][0]
 
-        return f'Prediction: {result} {self.X_value} kills\nProbability of "Over": {probabilities[0][1]:.4f}\nProbability of "Under": {probabilities[0][0]:.4f}'
+        return (
+            f'Prediction: {result} {self.X_value} kills\nProbability of "Over": {probabilities[0][1]:.4f}\nProbability of "Under": {probabilities[0][0]:.4f}',
+            result,
+            probability,
+        )
+
+
+class AutoSKLearnModel:
+    def __init__(
+        self,
+        df,
+        features,
+        X_value=25,
+        player="aBeZy",
+        game_mode="HardPoint",
+        player_team="Atlanta_FaZe",
+        enemy_team="OpTic_Texas",
+        teammates=["Gwinn", "TJHaLy", "Clayster"],
+        enemies=["Shotzzy", "Kenny", "Pred", "Dashy"],
+    ):
+        self.model = None
+        self.X_value = X_value
+        self.player = player
+        self.game_mode = game_mode
+        self.player_team = player_team
+        self.enemy_team = enemy_team
+        self.teammates = teammates
+        self.enemies = enemies
+        self.df = df
+        self.features = features
+
+    def train_and_predict(self):
+        df = self.df.copy()
+        df["Over_X_Kills"] = df["Kills"].apply(lambda x: 1 if x > self.X_value else 0)
+        df = df[self.features + ["Over_X_Kills", "Match_ID"]]
+        df.fillna(0, inplace=True)
+
+        X = df.drop(columns=["Over_X_Kills", "Match_ID"])
+        y = df["Over_X_Kills"]
+
+        scaler = StandardScaler()
+        X = scaler.fit_transform(X)
+
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42
+        )
+
+        # Initialize and fit auto-sklearn classifier
+        automl = autosklearn.classification.AutoSklearnClassifier(
+            time_left_for_this_task=180, per_run_time_limit=45
+        )
+        automl.fit(X_train, y_train)
+
+        # Evaluate the model
+        y_pred = automl.predict(X_test)
+        accuracy = accuracy_score(y_test, y_pred)
+        report = classification_report(y_test, y_pred, zero_division=0)
+
+        # print(f"Auto-sklearn Test Accuracy: {accuracy}")
+        # print(f"Auto-sklearn Classification Report:\n{report}")
+
+        def prepare_input(
+            game_mode, player_team, enemy_team, player, teammates, enemies
+        ):
+            input_data = {feature: 0 for feature in self.features}
+            input_data[f"Mode_{game_mode}"] = 1
+            input_data[f"PlayerTeam_{player_team}"] = 1
+            input_data[f"EnemyTeam_{enemy_team}"] = 1
+            input_data[f"{player}_Player"] = 1
+            for teammate in teammates:
+                input_data[f"{teammate}_Teammate"] = 1
+            for enemy in enemies:
+                input_data[f"{enemy}_Enemy"] = 1
+            input_df = pd.DataFrame([input_data])
+            input_df = input_df[self.features]
+            input_array = scaler.transform(input_df)
+            return input_array
+
+        input_data = prepare_input(
+            self.game_mode,
+            self.player_team,
+            self.enemy_team,
+            self.player,
+            self.teammates,
+            self.enemies,
+        )
+        input_array = input_data
+        prediction = automl.predict(input_array)
+        result = "Over" if prediction[0] == 1 else "Under"
+        probabilities = automl.predict_proba(input_array)
+        probability = probabilities[0][1] if result == "Over" else probabilities[0][0]
+
+        return (
+            f'Prediction: {result} {self.X_value} kills\nProbability of "Over": {probabilities[0][1]:.4f}\nProbability of "Under": {probabilities[0][0]:.4f}',
+            result,
+            probability,
+        )
 
 
 def main():
-    X_value = 22.5  # Number of kills to predict for over/under
-    player = "aBeZy"
-    game_mode = "HardPoint"  # 'HardPoint', 'Search_and_Destroy', 'Control'
-    player_team = "Atlanta_FaZe"
-    enemy_team = "Miami_Heretics"
-    teammates = ["Drazah", "Cellium", "Simp"]
-    enemies = ["Lucky", "MettalZ", "Vikul", "ReeaL"]
+
+    prediction_array = [
+        {
+            "player": "ReeaL",
+            "game_mode": "HardPoint",
+            "player_team": "Miami_Heretics",
+            "enemy_team": "Las_Vegas_Legion",
+            "teammates": ["Vikul", "MettalZ", "Lucky"],
+            "enemies": ["Nero", "oJohnny", "Gio", "Attach"],
+            "X_value": 26.0,
+        },
+        {
+            "player": "Vikul",
+            "game_mode": "HardPoint",
+            "player_team": "Miami_Heretics",
+            "enemy_team": "Las_Vegas_Legion",
+            "teammates": ["ReeaL", "MettalZ", "Lucky"],
+            "enemies": ["Nero", "oJohnny", "Gio", "Attach"],
+            "X_value": 24.5,
+        },
+        {
+            "player": "MettalZ",
+            "game_mode": "HardPoint",
+            "player_team": "Miami_Heretics",
+            "enemy_team": "Las_Vegas_Legion",
+            "teammates": ["ReeaL", "Vikul", "Lucky"],
+            "enemies": ["Nero", "oJohnny", "Gio", "Attach"],
+            "X_value": 23.5,
+        },
+        {
+            "player": "Lucky",
+            "game_mode": "HardPoint",
+            "player_team": "Miami_Heretics",
+            "enemy_team": "Las_Vegas_Legion",
+            "teammates": ["ReeaL", "Vikul", "MettalZ"],
+            "enemies": ["Nero", "oJohnny", "Gio", "Attach"],
+            "X_value": 22.0,
+        },
+        {
+            "player": "Nero",
+            "game_mode": "HardPoint",
+            "player_team": "Las_Vegas_Legion",
+            "enemy_team": "Miami_Heretics",
+            "teammates": ["oJohnny", "Gio", "Attach"],
+            "enemies": ["ReeaL", "Vikul", "MettalZ", "Lucky"],
+            "X_value": 26.0,
+        },
+        {
+            "player": "oJohnny",
+            "game_mode": "HardPoint",
+            "player_team": "Las_Vegas_Legion",
+            "enemy_team": "Miami_Heretics",
+            "teammates": ["Nero", "Gio", "Attach"],
+            "enemies": ["ReeaL", "Vikul", "MettalZ", "Lucky"],
+            "X_value": 24.0,
+        },
+        {
+            "player": "Gio",
+            "game_mode": "HardPoint",
+            "player_team": "Las_Vegas_Legion",
+            "enemy_team": "Miami_Heretics",
+            "teammates": ["Nero", "oJohnny", "Attach"],
+            "enemies": ["ReeaL", "Vikul", "MettalZ", "Lucky"],
+            "X_value": 23.5,
+        },
+        {
+            "player": "Attach",
+            "game_mode": "HardPoint",
+            "player_team": "Las_Vegas_Legion",
+            "enemy_team": "Miami_Heretics",
+            "teammates": ["Nero", "oJohnny", "Gio"],
+            "enemies": ["ReeaL", "Vikul", "MettalZ", "Lucky"],
+            "X_value": 23.5,
+        },
+        {
+            "player": "JoeDeceives",
+            "game_mode": "HardPoint",
+            "player_team": "Los_Angeles_Thieves",
+            "enemy_team": "Boston_Breach",
+            "teammates": ["Kremp", "Ghosty", "Nastie"],
+            "enemies": ["Snoopy", "Pentagrxm", "Priestahh", "Beans"],
+            "X_value": 25.0,
+        },
+        {
+            "player": "Kremp",
+            "game_mode": "HardPoint",
+            "player_team": "Los_Angeles_Thieves",
+            "enemy_team": "Boston_Breach",
+            "teammates": ["JoeDeceives", "Ghosty", "Nastie"],
+            "enemies": ["Snoopy", "Pentagrxm", "Priestahh", "Beans"],
+            "X_value": 24.5,
+        },
+        {
+            "player": "Ghosty",
+            "game_mode": "HardPoint",
+            "player_team": "Los_Angeles_Thieves",
+            "enemy_team": "Boston_Breach",
+            "teammates": ["JoeDeceives", "Kremp", "Nastie"],
+            "enemies": ["Snoopy", "Pentagrxm", "Priestahh", "Beans"],
+            "X_value": 25.5,
+        },
+        {
+            "player": "Nastie",
+            "game_mode": "HardPoint",
+            "player_team": "Los_Angeles_Thieves",
+            "enemy_team": "Boston_Breach",
+            "teammates": ["JoeDeceives", "Kremp", "Ghosty"],
+            "enemies": ["Snoopy", "Pentagrxm", "Priestahh", "Beans"],
+            "X_value": 23.0,
+        },
+        {
+            "player": "Snoopy",
+            "game_mode": "HardPoint",
+            "player_team": "Boston_Breach",
+            "enemy_team": "Los_Angeles_Thieves",
+            "teammates": ["Pentagrxm", "Priestahh", "Beans"],
+            "enemies": ["JoeDeceives", "Kremp", "Ghosty", "Nastie"],
+            "X_value": 26.0,
+        },
+        {
+            "player": "Pentagrxm",
+            "game_mode": "HardPoint",
+            "player_team": "Boston_Breach",
+            "enemy_team": "Los_Angeles_Thieves",
+            "teammates": ["Snoopy", "Priestahh", "Beans"],
+            "enemies": ["JoeDeceives", "Kremp", "Ghosty", "Nastie"],
+            "X_value": 23.0,
+        },
+        {
+            "player": "Priestahh",
+            "game_mode": "HardPoint",
+            "player_team": "Boston_Breach",
+            "enemy_team": "Los_Angeles_Thieves",
+            "teammates": ["Snoopy", "Pentagrxm", "Beans"],
+            "enemies": ["JoeDeceives", "Kremp", "Ghosty", "Nastie"],
+            "X_value": 22.5,
+        },
+        {
+            "player": "Beans",
+            "game_mode": "HardPoint",
+            "player_team": "Boston_Breach",
+            "enemy_team": "Los_Angeles_Thieves",
+            "teammates": ["Snoopy", "Pentagrxm", "Priestahh"],
+            "enemies": ["JoeDeceives", "Kremp", "Ghosty", "Nastie"],
+            "X_value": 24.5,
+        },
+        {
+            "player": "Estreal",
+            "game_mode": "HardPoint",
+            "player_team": "Los_Angeles_Guerrillas",
+            "enemy_team": "Carolina_Royal_Ravens",
+            "teammates": ["Fame", "Diamondcon", "Flames"],
+            "enemies": ["Gwinn", "TJHaLy", "Clayster", "FeLo"],
+            "X_value": 25.5,
+        },
+        {
+            "player": "Fame",
+            "game_mode": "HardPoint",
+            "player_team": "Los_Angeles_Guerrillas",
+            "enemy_team": "Carolina_Royal_Ravens",
+            "teammates": ["Estreal", "Diamondcon", "Flames"],
+            "enemies": ["Gwinn", "TJHaLy", "Clayster", "FeLo"],
+            "X_value": 23.0,
+        },
+        {
+            "player": "Diamondcon",
+            "game_mode": "HardPoint",
+            "player_team": "Los_Angeles_Guerrillas",
+            "enemy_team": "Carolina_Royal_Ravens",
+            "teammates": ["Estreal", "Fame", "Flames"],
+            "enemies": ["Gwinn", "TJHaLy", "Clayster", "FeLo"],
+            "X_value": 24.0,
+        },
+        {
+            "player": "Flames",
+            "game_mode": "HardPoint",
+            "player_team": "Los_Angeles_Guerrillas",
+            "enemy_team": "Carolina_Royal_Ravens",
+            "teammates": ["Estreal", "Fame", "Diamondcon"],
+            "enemies": ["Gwinn", "TJHaLy", "Clayster", "FeLo"],
+            "X_value": 23.0,
+        },
+        {
+            "player": "Gwinn",
+            "game_mode": "HardPoint",
+            "player_team": "Carolina_Royal_Ravens",
+            "enemy_team": "Los_Angeles_Guerrillas",
+            "teammates": ["TJHaLy", "Clayster", "FeLo"],
+            "enemies": ["Estreal", "Fame", "Diamondcon", "Flames"],
+            "X_value": 26.0,
+        },
+        {
+            "player": "TJHaLy",
+            "game_mode": "HardPoint",
+            "player_team": "Carolina_Royal_Ravens",
+            "enemy_team": "Los_Angeles_Guerrillas",
+            "teammates": ["Gwinn", "Clayster", "FeLo"],
+            "enemies": ["Estreal", "Fame", "Diamondcon", "Flames"],
+            "X_value": 24.0,
+        },
+        {
+            "player": "Clayster",
+            "game_mode": "HardPoint",
+            "player_team": "Carolina_Royal_Ravens",
+            "enemy_team": "Los_Angeles_Guerrillas",
+            "teammates": ["Gwinn", "TJHaLy", "FeLo"],
+            "enemies": ["Estreal", "Fame", "Diamondcon", "Flames"],
+            "X_value": 22.0,
+        },
+        {
+            "player": "FeLo",
+            "game_mode": "HardPoint",
+            "player_team": "Carolina_Royal_Ravens",
+            "enemy_team": "Los_Angeles_Guerrillas",
+            "teammates": ["Gwinn", "TJHaLy", "Clayster"],
+            "enemies": ["Estreal", "Fame", "Diamondcon", "Flames"],
+            "X_value": 21.5,
+        },
+        {
+            "player": "ReeaL",
+            "game_mode": "Search_and_Destroy",
+            "player_team": "Miami_Heretics",
+            "enemy_team": "Las_Vegas_Legion",
+            "teammates": ["Vikul", "MettalZ", "Lucky"],
+            "enemies": ["Nero", "oJohnny", "Gio", "Attach"],
+            "X_value": 6.5,
+        },
+        {
+            "player": "Vikul",
+            "game_mode": "Search_and_Destroy",
+            "player_team": "Miami_Heretics",
+            "enemy_team": "Las_Vegas_Legion",
+            "teammates": ["ReeaL", "MettalZ", "Lucky"],
+            "enemies": ["Nero", "oJohnny", "Gio", "Attach"],
+            "X_value": 6.5,
+        },
+        {
+            "player": "MettalZ",
+            "game_mode": "Search_and_Destroy",
+            "player_team": "Miami_Heretics",
+            "enemy_team": "Las_Vegas_Legion",
+            "teammates": ["ReeaL", "Vikul", "Lucky"],
+            "enemies": ["Nero", "oJohnny", "Gio", "Attach"],
+            "X_value": 6.5,
+        },
+        {
+            "player": "Lucky",
+            "game_mode": "Search_and_Destroy",
+            "player_team": "Miami_Heretics",
+            "enemy_team": "Las_Vegas_Legion",
+            "teammates": ["ReeaL", "Vikul", "MettalZ"],
+            "enemies": ["Nero", "oJohnny", "Gio", "Attach"],
+            "X_value": 7.0,
+        },
+        {
+            "player": "Nero",
+            "game_mode": "Search_and_Destroy",
+            "player_team": "Las_Vegas_Legion",
+            "enemy_team": "Miami_Heretics",
+            "teammates": ["oJohnny", "Gio", "Attach"],
+            "enemies": ["ReeaL", "Vikul", "MettalZ", "Lucky"],
+            "X_value": 7.5,
+        },
+        {
+            "player": "oJohnny",
+            "game_mode": "Search_and_Destroy",
+            "player_team": "Las_Vegas_Legion",
+            "enemy_team": "Miami_Heretics",
+            "teammates": ["Nero", "Gio", "Attach"],
+            "enemies": ["ReeaL", "Vikul", "MettalZ", "Lucky"],
+            "X_value": 6.5,
+        },
+        {
+            "player": "Gio",
+            "game_mode": "Search_and_Destroy",
+            "player_team": "Las_Vegas_Legion",
+            "enemy_team": "Miami_Heretics",
+            "teammates": ["Nero", "oJohnny", "Attach"],
+            "enemies": ["ReeaL", "Vikul", "MettalZ", "Lucky"],
+            "X_value": 6.0,
+        },
+        {
+            "player": "Attach",
+            "game_mode": "Search_and_Destroy",
+            "player_team": "Las_Vegas_Legion",
+            "enemy_team": "Miami_Heretics",
+            "teammates": ["Nero", "oJohnny", "Gio"],
+            "enemies": ["ReeaL", "Vikul", "MettalZ", "Lucky"],
+            "X_value": 7.0,
+        },
+        {
+            "player": "JoeDeceives",
+            "game_mode": "Search_and_Destroy",
+            "player_team": "Los_Angeles_Thieves",
+            "enemy_team": "Boston_Breach",
+            "teammates": ["Kremp", "Ghosty", "Nastie"],
+            "enemies": ["Snoopy", "Pentagrxm", "Priestahh", "Beans"],
+            "X_value": 6.0,
+        },
+        {
+            "player": "Kremp",
+            "game_mode": "Search_and_Destroy",
+            "player_team": "Los_Angeles_Thieves",
+            "enemy_team": "Boston_Breach",
+            "teammates": ["JoeDeceives", "Ghosty", "Nastie"],
+            "enemies": ["Snoopy", "Pentagrxm", "Priestahh", "Beans"],
+            "X_value": 6.5,
+        },
+        {
+            "player": "Ghosty",
+            "game_mode": "Search_and_Destroy",
+            "player_team": "Los_Angeles_Thieves",
+            "enemy_team": "Boston_Breach",
+            "teammates": ["JoeDeceives", "Kremp", "Nastie"],
+            "enemies": ["Snoopy", "Pentagrxm", "Priestahh", "Beans"],
+            "X_value": 7.0,
+        },
+        {
+            "player": "Nastie",
+            "game_mode": "Search_and_Destroy",
+            "player_team": "Los_Angeles_Thieves",
+            "enemy_team": "Boston_Breach",
+            "teammates": ["JoeDeceives", "Kremp", "Ghosty"],
+            "enemies": ["Snoopy", "Pentagrxm", "Priestahh", "Beans"],
+            "X_value": 6.5,
+        },
+        {
+            "player": "Snoopy",
+            "game_mode": "Search_and_Destroy",
+            "player_team": "Boston_Breach",
+            "enemy_team": "Los_Angeles_Thieves",
+            "teammates": ["Pentagrxm", "Priestahh", "Beans"],
+            "enemies": ["JoeDeceives", "Kremp", "Ghosty", "Nastie"],
+            "X_value": 7.5,
+        },
+        {
+            "player": "Pentagrxm",
+            "game_mode": "Search_and_Destroy",
+            "player_team": "Boston_Breach",
+            "enemy_team": "Los_Angeles_Thieves",
+            "teammates": ["Snoopy", "Priestahh", "Beans"],
+            "enemies": ["JoeDeceives", "Kremp", "Ghosty", "Nastie"],
+            "X_value": 6.0,
+        },
+        {
+            "player": "Priestahh",
+            "game_mode": "Search_and_Destroy",
+            "player_team": "Boston_Breach",
+            "enemy_team": "Los_Angeles_Thieves",
+            "teammates": ["Snoopy", "Pentagrxm", "Beans"],
+            "enemies": ["JoeDeceives", "Kremp", "Ghosty", "Nastie"],
+            "X_value": 6.5,
+        },
+        {
+            "player": "Beans",
+            "game_mode": "Search_and_Destroy",
+            "player_team": "Boston_Breach",
+            "enemy_team": "Los_Angeles_Thieves",
+            "teammates": ["Snoopy", "Pentagrxm", "Priestahh"],
+            "enemies": ["JoeDeceives", "Kremp", "Ghosty", "Nastie"],
+            "X_value": 7.0,
+        },
+        {
+            "player": "Estreal",
+            "game_mode": "Search_and_Destroy",
+            "player_team": "Los_Angeles_Guerrillas",
+            "enemy_team": "Carolina_Royal_Ravens",
+            "teammates": ["Fame", "Diamondcon", "Flames"],
+            "enemies": ["Gwinn", "TJHaLy", "Clayster", "FeLo"],
+            "X_value": 7.0,
+        },
+        {
+            "player": "Fame",
+            "game_mode": "Search_and_Destroy",
+            "player_team": "Los_Angeles_Guerrillas",
+            "enemy_team": "Carolina_Royal_Ravens",
+            "teammates": ["Estreal", "Diamondcon", "Flames"],
+            "enemies": ["Gwinn", "TJHaLy", "Clayster", "FeLo"],
+            "X_value": 6.5,
+        },
+        {
+            "player": "Diamondcon",
+            "game_mode": "Search_and_Destroy",
+            "player_team": "Los_Angeles_Guerrillas",
+            "enemy_team": "Carolina_Royal_Ravens",
+            "teammates": ["Estreal", "Fame", "Flames"],
+            "enemies": ["Gwinn", "TJHaLy", "Clayster", "FeLo"],
+            "X_value": 6.5,
+        },
+        {
+            "player": "Flames",
+            "game_mode": "Search_and_Destroy",
+            "player_team": "Los_Angeles_Guerrillas",
+            "enemy_team": "Carolina_Royal_Ravens",
+            "teammates": ["Estreal", "Fame", "Diamondcon"],
+            "enemies": ["Gwinn", "TJHaLy", "Clayster", "FeLo"],
+            "X_value": 7.0,
+        },
+        {
+            "player": "Gwinn",
+            "game_mode": "Search_and_Destroy",
+            "player_team": "Carolina_Royal_Ravens",
+            "enemy_team": "Los_Angeles_Guerrillas",
+            "teammates": ["TJHaLy", "Clayster", "FeLo"],
+            "enemies": ["Estreal", "Fame", "Diamondcon", "Flames"],
+            "X_value": 6.5,
+        },
+        {
+            "player": "TJHaLy",
+            "game_mode": "Search_and_Destroy",
+            "player_team": "Carolina_Royal_Ravens",
+            "enemy_team": "Los_Angeles_Guerrillas",
+            "teammates": ["Gwinn", "Clayster", "FeLo"],
+            "enemies": ["Estreal", "Fame", "Diamondcon", "Flames"],
+            "X_value": 7.5,
+        },
+        {
+            "player": "Clayster",
+            "game_mode": "Search_and_Destroy",
+            "player_team": "Carolina_Royal_Ravens",
+            "enemy_team": "Los_Angeles_Guerrillas",
+            "teammates": ["Gwinn", "TJHaLy", "FeLo"],
+            "enemies": ["Estreal", "Fame", "Diamondcon", "Flames"],
+            "X_value": 6.5,
+        },
+        {
+            "player": "FeLo",
+            "game_mode": "Search_and_Destroy",
+            "player_team": "Carolina_Royal_Ravens",
+            "enemy_team": "Los_Angeles_Guerrillas",
+            "teammates": ["Gwinn", "TJHaLy", "Clayster"],
+            "enemies": ["Estreal", "Fame", "Diamondcon", "Flames"],
+            "X_value": 6.0,
+        },
+        {
+            "player": "ReeaL",
+            "game_mode": "Control",
+            "player_team": "Miami_Heretics",
+            "enemy_team": "Las_Vegas_Legion",
+            "teammates": ["Vikul", "MettalZ", "Lucky"],
+            "enemies": ["Nero", "oJohnny", "Gio", "Attach"],
+            "X_value": 23.5,
+        },
+        {
+            "player": "Vikul",
+            "game_mode": "Control",
+            "player_team": "Miami_Heretics",
+            "enemy_team": "Las_Vegas_Legion",
+            "teammates": ["ReeaL", "MettalZ", "Lucky"],
+            "enemies": ["Nero", "oJohnny", "Gio", "Attach"],
+            "X_value": 22.5,
+        },
+        {
+            "player": "MettalZ",
+            "game_mode": "Control",
+            "player_team": "Miami_Heretics",
+            "enemy_team": "Las_Vegas_Legion",
+            "teammates": ["ReeaL", "Vikul", "Lucky"],
+            "enemies": ["Nero", "oJohnny", "Gio", "Attach"],
+            "X_value": 21.5,
+        },
+        {
+            "player": "Lucky",
+            "game_mode": "Control",
+            "player_team": "Miami_Heretics",
+            "enemy_team": "Las_Vegas_Legion",
+            "teammates": ["ReeaL", "Vikul", "MettalZ"],
+            "enemies": ["Nero", "oJohnny", "Gio", "Attach"],
+            "X_value": 20.0,
+        },
+        {
+            "player": "Nero",
+            "game_mode": "Control",
+            "player_team": "Las_Vegas_Legion",
+            "enemy_team": "Miami_Heretics",
+            "teammates": ["oJohnny", "Gio", "Attach"],
+            "enemies": ["ReeaL", "Vikul", "MettalZ", "Lucky"],
+            "X_value": 24.0,
+        },
+        {
+            "player": "oJohnny",
+            "game_mode": "Control",
+            "player_team": "Las_Vegas_Legion",
+            "enemy_team": "Miami_Heretics",
+            "teammates": ["Nero", "Gio", "Attach"],
+            "enemies": ["ReeaL", "Vikul", "MettalZ", "Lucky"],
+            "X_value": 22.5,
+        },
+        {
+            "player": "Gio",
+            "game_mode": "Control",
+            "player_team": "Las_Vegas_Legion",
+            "enemy_team": "Miami_Heretics",
+            "teammates": ["Nero", "oJohnny", "Attach"],
+            "enemies": ["ReeaL", "Vikul", "MettalZ", "Lucky"],
+            "X_value": 22.5,
+        },
+        {
+            "player": "Attach",
+            "game_mode": "Control",
+            "player_team": "Las_Vegas_Legion",
+            "enemy_team": "Miami_Heretics",
+            "teammates": ["Nero", "oJohnny", "Gio"],
+            "enemies": ["ReeaL", "Vikul", "MettalZ", "Lucky"],
+            "X_value": 22.5,
+        },
+        {
+            "player": "JoeDeceives",
+            "game_mode": "Control",
+            "player_team": "Los_Angeles_Thieves",
+            "enemy_team": "Boston_Breach",
+            "teammates": ["Kremp", "Ghosty", "Nastie"],
+            "enemies": ["Snoopy", "Pentagrxm", "Priestahh", "Beans"],
+            "X_value": 23.5,
+        },
+        {
+            "player": "Kremp",
+            "game_mode": "Control",
+            "player_team": "Los_Angeles_Thieves",
+            "enemy_team": "Boston_Breach",
+            "teammates": ["JoeDeceives", "Ghosty", "Nastie"],
+            "enemies": ["Snoopy", "Pentagrxm", "Priestahh", "Beans"],
+            "X_value": 23.0,
+        },
+        {
+            "player": "Ghosty",
+            "game_mode": "Control",
+            "player_team": "Los_Angeles_Thieves",
+            "enemy_team": "Boston_Breach",
+            "teammates": ["JoeDeceives", "Kremp", "Nastie"],
+            "enemies": ["Snoopy", "Pentagrxm", "Priestahh", "Beans"],
+            "X_value": 24.0,
+        },
+        {
+            "player": "Nastie",
+            "game_mode": "Control",
+            "player_team": "Los_Angeles_Thieves",
+            "enemy_team": "Boston_Breach",
+            "teammates": ["JoeDeceives", "Kremp", "Ghosty"],
+            "enemies": ["Snoopy", "Pentagrxm", "Priestahh", "Beans"],
+            "X_value": 22.0,
+        },
+        {
+            "player": "Snoopy",
+            "game_mode": "Control",
+            "player_team": "Boston_Breach",
+            "enemy_team": "Los_Angeles_Thieves",
+            "teammates": ["Pentagrxm", "Priestahh", "Beans"],
+            "enemies": ["JoeDeceives", "Kremp", "Ghosty", "Nastie"],
+            "X_value": 24.5,
+        },
+        {
+            "player": "Pentagrxm",
+            "game_mode": "Control",
+            "player_team": "Boston_Breach",
+            "enemy_team": "Los_Angeles_Thieves",
+            "teammates": ["Snoopy", "Priestahh", "Beans"],
+            "enemies": ["JoeDeceives", "Kremp", "Ghosty", "Nastie"],
+            "X_value": 22.0,
+        },
+        {
+            "player": "Priestahh",
+            "game_mode": "Control",
+            "player_team": "Boston_Breach",
+            "enemy_team": "Los_Angeles_Thieves",
+            "teammates": ["Snoopy", "Pentagrxm", "Beans"],
+            "enemies": ["JoeDeceives", "Kremp", "Ghosty", "Nastie"],
+            "X_value": 22.0,
+        },
+        {
+            "player": "Beans",
+            "game_mode": "Control",
+            "player_team": "Boston_Breach",
+            "enemy_team": "Los_Angeles_Thieves",
+            "teammates": ["Snoopy", "Pentagrxm", "Priestahh"],
+            "enemies": ["JoeDeceives", "Kremp", "Ghosty", "Nastie"],
+            "X_value": 23.5,
+        },
+        {
+            "player": "Estreal",
+            "game_mode": "Control",
+            "player_team": "Los_Angeles_Guerrillas",
+            "enemy_team": "Carolina_Royal_Ravens",
+            "teammates": ["Fame", "Diamondcon", "Flames"],
+            "enemies": ["Gwinn", "TJHaLy", "Clayster", "FeLo"],
+            "X_value": 23.5,
+        },
+        {
+            "player": "Fame",
+            "game_mode": "Control",
+            "player_team": "Los_Angeles_Guerrillas",
+            "enemy_team": "Carolina_Royal_Ravens",
+            "teammates": ["Estreal", "Diamondcon", "Flames"],
+            "enemies": ["Gwinn", "TJHaLy", "Clayster", "FeLo"],
+            "X_value": 22.5,
+        },
+        {
+            "player": "Diamondcon",
+            "game_mode": "Control",
+            "player_team": "Los_Angeles_Guerrillas",
+            "enemy_team": "Carolina_Royal_Ravens",
+            "teammates": ["Estreal", "Fame", "Flames"],
+            "enemies": ["Gwinn", "TJHaLy", "Clayster", "FeLo"],
+            "X_value": 22.0,
+        },
+        {
+            "player": "Flames",
+            "game_mode": "Control",
+            "player_team": "Los_Angeles_Guerrillas",
+            "enemy_team": "Carolina_Royal_Ravens",
+            "teammates": ["Estreal", "Fame", "Diamondcon"],
+            "enemies": ["Gwinn", "TJHaLy", "Clayster", "FeLo"],
+            "X_value": 21.5,
+        },
+        {
+            "player": "Gwinn",
+            "game_mode": "Control",
+            "player_team": "Carolina_Royal_Ravens",
+            "enemy_team": "Los_Angeles_Guerrillas",
+            "teammates": ["TJHaLy", "Clayster", "FeLo"],
+            "enemies": ["Estreal", "Fame", "Diamondcon", "Flames"],
+            "X_value": 24.5,
+        },
+        {
+            "player": "TJHaLy",
+            "game_mode": "Control",
+            "player_team": "Carolina_Royal_Ravens",
+            "enemy_team": "Los_Angeles_Guerrillas",
+            "teammates": ["Gwinn", "Clayster", "FeLo"],
+            "enemies": ["Estreal", "Fame", "Diamondcon", "Flames"],
+            "X_value": 22.0,
+        },
+        {
+            "player": "Clayster",
+            "game_mode": "Control",
+            "player_team": "Carolina_Royal_Ravens",
+            "enemy_team": "Los_Angeles_Guerrillas",
+            "teammates": ["Gwinn", "TJHaLy", "FeLo"],
+            "enemies": ["Estreal", "Fame", "Diamondcon", "Flames"],
+            "X_value": 20.5,
+        },
+        {
+            "player": "FeLo",
+            "game_mode": "Control",
+            "player_team": "Carolina_Royal_Ravens",
+            "enemy_team": "Los_Angeles_Guerrillas",
+            "teammates": ["Gwinn", "TJHaLy", "Clayster"],
+            "enemies": ["Estreal", "Fame", "Diamondcon", "Flames"],
+            "X_value": 19.5,
+        },
+    ]
 
     features = [
         "Mode_Control",
@@ -743,38 +1500,117 @@ def main():
     ]
 
     # Load the data
-    df = pd.read_csv("preprocessed_player_stats_Trial3.csv")
+    df = pd.read_csv("preprocessed_player_stats_Trial4.csv")
 
-    modelv1 = ModelV1(
-        df=df,
-        features=features,
-        X_value=X_value,
-        player=player,
-        game_mode=game_mode,
-        player_team=player_team,
-        enemy_team=enemy_team,
-        teammates=teammates,
-        enemies=enemies,
+    dates = []
+    game_modes = []
+    players = []
+    over_under_values = []
+    model_v1_predictions = []
+    model_v1_probabilities = []
+    model_v2_predictions = []
+    model_v2_probabilities = []
+    autosklearn_predictions = []
+    autosklearn_probabilities = []
+
+    for dic in prediction_array:
+        game_mode = dic["game_mode"]
+        player_team = dic["player_team"]
+        enemy_team = dic["enemy_team"]
+        teammates = dic["teammates"]
+        enemies = dic["enemies"]
+        X_value = dic["X_value"]
+        player = dic["player"]
+
+        try:
+
+            modelv1 = ModelV1(
+                df=df,
+                features=features,
+                X_value=X_value,
+                player=player,
+                game_mode=game_mode,
+                player_team=player_team,
+                enemy_team=enemy_team,
+                teammates=teammates,
+                enemies=enemies,
+            )
+
+            modelv1_message, modelv1_result, modelv1_probability = (
+                modelv1.train_and_predict()
+            )
+
+            modelv2 = ModelV2(
+                df=df,
+                features=features,
+                X_value=X_value,
+                player=player,
+                game_mode=game_mode,
+                player_team=player_team,
+                enemy_team=enemy_team,
+                teammates=teammates,
+                enemies=enemies,
+            )
+
+            modelv2_message, modelv2_result, modelv2_probability = (
+                modelv2.train_and_predict()
+            )
+
+            autosklearn = AutoSKLearnModel(
+                df=df,
+                features=features,
+                X_value=X_value,
+                player=player,
+                game_mode=game_mode,
+                player_team=player_team,
+                enemy_team=enemy_team,
+                teammates=teammates,
+                enemies=enemies,
+            )
+
+            autosklearn_message, autosklearn_result, autosklearn_probability = (
+                autosklearn.train_and_predict()
+            )
+
+            print("ModelV1:\n", modelv1_message)
+            print("ModelV2:\n", modelv2_message)
+            print("autosklearn:\n", autosklearn_message)
+
+            dates.append("5/17/24")
+            game_modes.append(game_mode)
+            players.append(player)
+            over_under_values.append(X_value)
+            model_v1_predictions.append(modelv1_result)
+            model_v1_probabilities.append(modelv1_probability)
+            model_v2_predictions.append(modelv2_result)
+            model_v2_probabilities.append(modelv2_probability)
+            autosklearn_predictions.append(autosklearn_result)
+            autosklearn_probabilities.append(autosklearn_probability)
+
+        except Exception as e:
+            print(f"Error for {player}: {e}")
+            continue
+
+    # Create DataFrame
+    df = pd.DataFrame(
+        {
+            "Date": dates,
+            "GameMode": game_modes,
+            "Player": players,
+            "Over/Under": over_under_values,
+            "ModelV1": model_v1_predictions,
+            "Probability_V1": model_v1_probabilities,
+            "ModelV2": model_v2_predictions,
+            "Probability_V2": model_v2_probabilities,
+            "AutoSKLearnModel": autosklearn_predictions,
+            "Probability_AutoSK": autosklearn_probabilities,
+        }
     )
 
-    modelv1_message = modelv1.train_and_predict()
-
-    modelv2 = ModelV2(
-        df=df,
-        features=features,
-        X_value=X_value,
-        player=player,
-        game_mode=game_mode,
-        player_team=player_team,
-        enemy_team=enemy_team,
-        teammates=teammates,
-        enemies=enemies,
-    )
-
-    modelv2_message = modelv2.train_and_predict()
-
-    print("ModelV1:\n", modelv1_message)
-    print("ModelV2:\n", modelv2_message)
+    print("Saving data to an excel file...")
+    # Save DataFrame to Excel
+    df.to_excel("./model_predictions.xlsx", index=False)
+    print("Excel file created successfully.")
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ conda activate ml_project
 conda install pytorch torchvision torchaudio cudatoolkit=11.3 -c pytorch
 conda install jupyter pandas scikit-learn matplotlib
 pip install torch torchvision torchaudio -f https://download.pytorch.org/whl/cu{VERSIONNUM}/torch_stable.html
+pip install xgboost==2.0.3 catboost==1.2.5 auto-sklearn openpyxl==3.1.2
 ```
 
 Note\* You will have to select the cuda version compatible with yor GPU. You can run the command:
