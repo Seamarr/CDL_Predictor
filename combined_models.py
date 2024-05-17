@@ -16,6 +16,7 @@ from sklearn.metrics import accuracy_score, classification_report
 from sklearn.model_selection import KFold
 from sklearn.model_selection import GridSearchCV
 from sklearn.base import BaseEstimator, ClassifierMixin
+import xgboost as xgb
 
 
 class PyTorchModelWrapperV1(BaseEstimator, ClassifierMixin):
@@ -316,10 +317,7 @@ class ModelV2:
         self.features = features
 
     def train_and_predict(self):
-
-        # Check if GPU is available
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        # Print whether CPU or CUDA is being used
         if device.type == "cuda":
             print("Using CUDA (GPU)")
         else:
@@ -327,27 +325,14 @@ class ModelV2:
 
         df = self.df.copy()
         df["Over_X_Kills"] = df["Kills"].apply(lambda x: 1 if x > self.X_value else 0)
-
         df = df[self.features + ["Over_X_Kills", "Match_ID"]]
-
-        # Handle missing values
         df.fillna(0, inplace=True)
-
-        # Split the data
         X = df.drop(columns=["Over_X_Kills", "Match_ID"])
         y = df["Over_X_Kills"]
-
-        # Standardize the features
         scaler = StandardScaler()
         X = scaler.fit_transform(X)
-
-        # Convert to PyTorch tensors and move to GPU
         X = torch.tensor(X, dtype=torch.float32).to(device)
-        y = (
-            torch.tensor(y.values, dtype=torch.float32).to(device).unsqueeze(1)
-        )  # Ensure y is a 2D tensor
-
-        # Train-test split
+        y = torch.tensor(y.values, dtype=torch.float32).to(device).unsqueeze(1)
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, random_state=42
         )
@@ -395,14 +380,10 @@ class ModelV2:
                 x = self.sigmoid(x)
                 return x
 
-        # Define loss function
         criterion = nn.BCELoss()
-
-        # Hyperparameter values
         lr_values = [0.001, 0.01, 0.1]
         batch_sizes = [32, 64, 128]
 
-        # Function to train PyTorch models
         def train_model(model, optimizer, X_train, y_train, num_epochs=20):
             model.train()
             for epoch in range(num_epochs):
@@ -412,7 +393,6 @@ class ModelV2:
                 loss.backward()
                 optimizer.step()
 
-        # Function to evaluate PyTorch models
         def evaluate_model(model, X_test, y_test):
             model.eval()
             with torch.no_grad():
@@ -421,19 +401,16 @@ class ModelV2:
                 accuracy = (predictions == y_test).float().mean()
                 return accuracy.item()
 
-        # Cross-validation and hyperparameter tuning for PyTorch models
         def cross_val_tune_model(model_class, X, y, num_epochs=20):
             best_model = None
             best_accuracy = 0
             kf = KFold(n_splits=5, shuffle=True, random_state=42)
-
             for lr in lr_values:
                 for batch_size in batch_sizes:
                     accuracies = []
                     for train_index, val_index in kf.split(X):
                         X_train_cv, X_val_cv = X[train_index], X[val_index]
                         y_train_cv, y_val_cv = y[train_index], y[val_index]
-
                         model = model_class().to(device)
                         optimizer = optim.Adam(model.parameters(), lr=lr)
                         train_model(
@@ -445,33 +422,31 @@ class ModelV2:
                         )
                         accuracy = evaluate_model(model, X_val_cv, y_val_cv)
                         accuracies.append(accuracy)
-
                     mean_accuracy = np.mean(accuracies)
                     if mean_accuracy > best_accuracy:
                         best_accuracy = mean_accuracy
                         best_model = model_class().to(device)
                         optimizer = optim.Adam(best_model.parameters(), lr=lr)
                         train_model(best_model, optimizer, X, y, num_epochs=num_epochs)
-
             return best_model
 
-        # Find the best models for each neural network using cross-validation
         best_model1 = cross_val_tune_model(NeuralNetwork1, X_train, y_train)
         best_model2 = cross_val_tune_model(NeuralNetwork2, X_train, y_train)
         best_model3 = cross_val_tune_model(NeuralNetwork3, X_train, y_train)
 
-        # Define hyperparameter grids for other models
         param_grid_knn = {"n_neighbors": [3, 5, 7], "weights": ["uniform", "distance"]}
-
         param_grid_lr = {"C": [0.01, 0.1, 1, 10], "solver": ["liblinear"]}
-
         param_grid_rf = {
             "n_estimators": [50, 100, 200],
             "max_depth": [None, 10, 20],
             "min_samples_split": [2, 5, 10],
         }
+        param_grid_xgb = {
+            "n_estimators": [50, 100, 200],
+            "max_depth": [3, 6, 10],
+            "learning_rate": [0.01, 0.1, 0.3],
+        }
 
-        # Create model instances with GridSearchCV
         knn_model = GridSearchCV(
             KNeighborsClassifier(), param_grid_knn, cv=3, n_jobs=-1
         )
@@ -481,21 +456,25 @@ class ModelV2:
         random_forest_model = GridSearchCV(
             RandomForestClassifier(random_state=42), param_grid_rf, cv=3, n_jobs=-1
         )
+        xgb_model = GridSearchCV(
+            xgb.XGBClassifier(use_label_encoder=False, eval_metric="logloss"),
+            param_grid_xgb,
+            cv=3,
+            n_jobs=-1,
+        )
 
-        # Train the GridSearchCV models
         knn_model.fit(X_train.cpu().numpy(), y_train.cpu().numpy().ravel())
         logistic_regression_model.fit(
             X_train.cpu().numpy(), y_train.cpu().numpy().ravel()
         )
         random_forest_model.fit(X_train.cpu().numpy(), y_train.cpu().numpy().ravel())
+        xgb_model.fit(X_train.cpu().numpy(), y_train.cpu().numpy().ravel())
 
-        # Create a new voting classifier that includes additional models
         class PyTorchModelWrapper(BaseEstimator, ClassifierMixin):
             def __init__(self, model):
                 self.model = model
 
             def fit(self, X, y):
-                # PyTorch models are already trained
                 return self
 
             def predict(self, X):
@@ -516,7 +495,6 @@ class ModelV2:
                     )
                     return np.hstack([1 - predictions, predictions])
 
-        # Create the ensemble
         ensemble = VotingClassifier(
             estimators=[
                 ("nn1", PyTorchModelWrapper(best_model1)),
@@ -525,14 +503,12 @@ class ModelV2:
                 ("knn", knn_model),
                 ("log_reg", logistic_regression_model),
                 ("rf", random_forest_model),
+                ("xgb", xgb_model),
             ],
             voting="soft",
         )
 
-        # Train the ensemble
         ensemble.fit(X_train.cpu().numpy(), y_train.cpu().numpy().ravel())
-
-        # Evaluate the ensemble
         ensemble_predictions = ensemble.predict(X_test.cpu().numpy())
         accuracy = accuracy_score(y_test.cpu().numpy(), ensemble_predictions)
         report = classification_report(
@@ -542,39 +518,21 @@ class ModelV2:
         print(f"Ensemble Test Accuracy: {accuracy}")
         print(f"Ensemble Classification Report:\n{report}")
 
-        # Prepare the input data as before
         def prepare_input(
             game_mode, player_team, enemy_team, player, teammates, enemies
         ):
             input_data = {feature: 0 for feature in self.features}
-
-            # Set game mode
             input_data[f"Mode_{game_mode}"] = 1
-
-            # Set player team and enemy team
             input_data[f"PlayerTeam_{player_team}"] = 1
             input_data[f"EnemyTeam_{enemy_team}"] = 1
-
-            # Set player
             input_data[f"{player}_Player"] = 1
-
-            # Set teammates
             for teammate in teammates:
                 input_data[f"{teammate}_Teammate"] = 1
-
-            # Set enemies
             for enemy in enemies:
                 input_data[f"{enemy}_Enemy"] = 1
-
-            # Convert to DataFrame for prediction with correct feature names
             input_df = pd.DataFrame([input_data])
-
-            # Select the same features as during training
             input_df = input_df[self.features]
-
-            # Standardize the data
             input_array = scaler.transform(input_df)
-
             return input_array
 
         input_data = prepare_input(
@@ -585,15 +543,9 @@ class ModelV2:
             self.teammates,
             self.enemies,
         )
-
-        # Make predictions with the updated ensemble model
-        input_array = input_data  # Already a numpy array
-
-        # Get prediction
+        input_array = input_data
         prediction = ensemble.predict(input_array)
         result = "Over" if prediction[0] == 1 else "Under"
-
-        # If you want probability estimates
         probabilities = ensemble.predict_proba(input_array)
 
         return f'Prediction: {result} {self.X_value} kills\nProbability of "Over": {probabilities[0][1]:.4f}\nProbability of "Under": {probabilities[0][0]:.4f}'
