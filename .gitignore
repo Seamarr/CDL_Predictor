@@ -41,6 +41,7 @@ venv/
 # Other files specific to your project
 # Add log files, temporary files, or local config files specific to your project
 /Readings
+/catboost_info
 
 # Anything else
 *.csv
