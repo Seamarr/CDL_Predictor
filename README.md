@@ -42,7 +42,17 @@ To deactivate, run:
 conda deactivate
 ```
 
-### Launch Jupyter Notebook
+### Option 1: Combined models
+
+You may use the combined_models python script to get the predictions from all the different models. Not that
+this is not a combination of all the models into one, this is just all of the models combined into 1 file for
+simplicity of comparison.
+
+```shell
+python ./combined_models.py
+```
+
+### Option 2: Jupyter Notebook
 
 ```shell
 jupyter notebook
