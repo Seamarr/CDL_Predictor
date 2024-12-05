@@ -26,7 +26,7 @@ class PyTorchModelWrapperV1(BaseEstimator, ClassifierMixin):
         self.model = model
 
     def fit(self, X, y):
-        # PyTorch models are already trained
+        # PyTorch models are already trained #
         return self
 
     def predict(self, X):

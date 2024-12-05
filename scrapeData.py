@@ -80,7 +80,7 @@ def scrape(specific_players_and_matches={}, specific_matches=[]):
     # Setup WebDriver
     driver = initialize_driver()
 
-    # Open a webpage
+    # Open a webpage2
     driver.get("https://callofdutyleague.com/en-us/stats")
 
     # Example: Click a button by its ID

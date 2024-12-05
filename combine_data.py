@@ -17,7 +17,7 @@ data2 = data2[data1.columns]
 # Concatenate the datasets
 combined_data = pd.concat([data1, data2])
 
-# Save the combined dataset to a new CSV file
+# Save the combined dataset to a new CSV file #
 combined_data.to_csv("./data/combined_data.csv", index=False)
 
 print("Datasets have been combined and saved to 'combined_data.csv'")
