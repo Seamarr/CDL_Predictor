@@ -81,7 +81,7 @@ def scrape(specific_players_and_matches={}, specific_matches=[]):
     driver = initialize_driver()
 
     # Open a webpage
-    driver.get("https://www.breakingpoint.gg/cdl/teams-and-players")
+    driver.get("https://callofdutyleague.com/en-us/stats")
 
     # Example: Click a button by its ID
 
@@ -580,7 +580,7 @@ def main():
         "Priestahh": ["70649"],
         "Snoopy": ["70649"],
     }
-    specific_matches = ["70648", "70649"]
+    specific_matches = ["70657", "70656", "70655", "70654", "70653"]
     allPlayerStats = scrape(
         specific_matches=specific_matches
     )  # Your scrape function here

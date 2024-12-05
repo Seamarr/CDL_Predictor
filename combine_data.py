@@ -1,7 +1,7 @@
 import pandas as pd
 
 # Load the datasets from CSV files
-data1 = pd.read_csv("./data/preprocessed_player_stats_Trial4.csv")
+data1 = pd.read_csv("./data/Trial6.csv")
 data2 = pd.read_csv("./data/preprocessed_player_stats.csv")
 
 # Identify missing columns in data2 and create a DataFrame with these columns filled with zeros
